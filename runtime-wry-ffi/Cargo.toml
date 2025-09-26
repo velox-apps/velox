@@ -1,0 +1,30 @@
+[package]
+name = "velox-runtime-wry-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "FFI helpers exposing wry- and tao-backed runtime functionality for Velox"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "velox_runtime_wry_ffi"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+tauri-runtime-wry = { path = "../../tauri/crates/tauri-runtime-wry" }
+tao = { path = "../../tao", default-features = false, features = ["rwh_06"] }
+wry = { path = "../../wry", default-features = false, features = ["os-webview"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["x11"]
+# Forward feature flags to the underlying tauri-runtime-wry crate so Swift
+# consumers can opt into the same capability surface.
+x11 = ["tauri-runtime-wry/x11"]
+devtools = ["tauri-runtime-wry/devtools"]
+macos-private-api = ["tauri-runtime-wry/macos-private-api"]
+objc-exception = ["tauri-runtime-wry/objc-exception"]
+tracing = ["tauri-runtime-wry/tracing"]
+macos-proxy = ["tauri-runtime-wry/macos-proxy"]
+unstable = ["tauri-runtime-wry/unstable"]
+common-controls-v6 = ["tauri-runtime-wry/common-controls-v6"]
