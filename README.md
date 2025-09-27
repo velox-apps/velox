@@ -47,3 +47,21 @@ proxy?.requestExit()
 This demonstrates the bridging between Swift and the underlying Tao/Wry event loop, window, and
 webview primitives exposed by the Rust shim. Event callbacks now deliver structured metadata (via
 JSON) which the Swift layer normalises into strongly-typed `VeloxRuntimeWry.Event` values.
+
+### Event Metadata
+
+`VeloxRuntimeWry.Event` exposes rich keyboard, pointer, focus, DPI, and file-drop information so
+Swift applications can respond to Tao/Wry input without having to touch the underlying JSON payloads.
+
+### Window & Webview Controls
+
+The Swift API now includes helpers to:
+
+- configure window titles, fullscreen state, sizing constraints, z-order, and visibility;
+- request redraws or reposition windows without touching tao directly;
+- drive Wry webviews via navigation, reload, JavaScript evaluation, zoom control, visibility toggles, and browsing-data clearing.
+- toggle advanced window capabilities including decorations, always-on-bottom/workspace visibility, content protection, focus/focusable state, cursor controls, drag gestures, taskbar presence, and attention requests.
+
+### Runtime Lifecycle
+
+`VeloxRuntimeWry.Runtime` wraps `tauri-runtime-wry::Wry`, allowing Swift code to run per-iteration callbacks over Tauri's `RunEvent` stream and request clean exits, laying the groundwork for exposing the full runtime dispatcher APIs. It can now materialise dispatcher-backed windows via `createWindow(...)`, returning the same `Window`/`Webview` handles Swift already uses so runtime-managed instances participate in the existing control surface.

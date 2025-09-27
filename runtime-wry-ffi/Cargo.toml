@@ -10,11 +10,14 @@ name = "velox_runtime_wry_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
+tauri-runtime = { path = "../../tauri/crates/tauri-runtime" }
 tauri-runtime-wry = { path = "../../tauri/crates/tauri-runtime-wry" }
 tao = { path = "../../tao", default-features = false, features = ["rwh_06"] }
 wry = { path = "../../wry", default-features = false, features = ["os-webview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+url = "2"
+tauri-utils = { path = "../../tauri/crates/tauri-utils" }
 
 [features]
 default = ["x11"]

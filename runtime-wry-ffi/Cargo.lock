@@ -3055,7 +3055,10 @@ dependencies = [
  "serde",
  "serde_json",
  "tao 0.34.3",
+ "tauri-runtime",
  "tauri-runtime-wry",
+ "tauri-utils",
+ "url",
  "wry 0.53.3",
 ]
 
