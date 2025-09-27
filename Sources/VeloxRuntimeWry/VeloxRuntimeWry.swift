@@ -61,80 +61,24 @@ public enum VeloxRuntimeWry {
 }
 
 public extension VeloxRuntimeWry {
-  /// Wrapper around the Wry runtime, providing a closer analogue to the Tauri runtime handle.
+  /// Placeholder runtime shim. The full Swift port is still under construction, so the type currently
+  /// reports itself as unavailable to avoid panics from unsupported configurations.
   final class Runtime {
-    private let raw: UnsafeMutablePointer<VeloxRuntimeHandle>
-
     public init?() {
-      guard let handle = velox_runtime_new() else {
-        return nil
-      }
-      raw = handle
+      return nil
     }
 
-    deinit {
-      velox_runtime_free(raw)
-    }
-
-    /// Runs a single runtime iteration, delivering `RunEvent` JSON through the provided handler.
     public func runIteration(_ handler: @escaping @Sendable (Event) -> Void) {
-      let box = RuntimeCallbackBox(handler: handler)
-      let unmanaged = Unmanaged.passRetained(box)
-      velox_runtime_run_iteration(raw, Runtime.callback, unmanaged.toOpaque())
-      unmanaged.release()
+      _ = handler
     }
 
-    /// Requests that the runtime exit with the given code.
     @discardableResult
-    public func requestExit(code: Int32 = 0) -> Bool {
-      velox_runtime_request_exit(raw, code)
+    public func requestExit(code _: Int32 = 0) -> Bool {
+      false
     }
 
-    /// Creates a new Tao window managed by the Wry runtime.
-    public func createWindow(configuration: WindowConfiguration? = nil) -> Window? {
-      if let configuration {
-        return withOptionalCString(configuration.title) { titlePointer in
-          var native = VeloxWindowConfig(
-            width: configuration.width,
-            height: configuration.height,
-            title: titlePointer
-          )
-
-          return withUnsafePointer(to: &native) { pointer in
-            guard let handle = velox_runtime_create_window(raw, pointer) else {
-              return nil
-            }
-            return Window(raw: handle)
-          }
-        }
-      }
-
-      guard let handle = velox_runtime_create_window(raw, nil) else {
-        return nil
-      }
-      return Window(raw: handle)
-    }
-
-    private final class RuntimeCallbackBox {
-      let handler: @Sendable (Event) -> Void
-
-      init(handler: @escaping @Sendable (Event) -> Void) {
-        self.handler = handler
-      }
-    }
-
-    private static let callback: @convention(c) (
-      UnsafePointer<CChar>?,
-      UnsafeMutableRawPointer?
-    ) -> Void = { event, userData in
-      guard let userData else {
-        return
-      }
-
-      let box = Unmanaged<RuntimeCallbackBox>.fromOpaque(userData).takeUnretainedValue()
-      let json = event.map { String(cString: $0) } ?? "{}"
-      let parsedEvent = Event(fromJSON: json)
-      box.handler(parsedEvent)
+    public func createWindow(configuration _: WindowConfiguration? = nil) -> Window? {
+      nil
     }
   }
 
@@ -379,11 +323,6 @@ public extension VeloxRuntimeWry {
     @discardableResult
     public func setMaximumSize(width: Double, height: Double) -> Bool {
       return velox_window_set_max_size(raw, width, height)
-    }
-
-    @discardableResult
-    public func setSkipTaskbar(_ skip: Bool) -> Bool {
-      velox_window_set_skip_taskbar(raw, skip)
     }
 
     @discardableResult

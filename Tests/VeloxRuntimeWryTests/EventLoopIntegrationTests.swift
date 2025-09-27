@@ -42,7 +42,6 @@ final class EventLoopIntegrationTests: XCTestCase {
     _ = window.clearUserAttention()
     _ = window.startDragging()
     _ = window.startResizeDragging(.south)
-    _ = window.setSkipTaskbar(false)
     _ = window.setCursorGrab(false)
     _ = window.setCursorVisible(true)
     _ = window.setCursorPosition(x: 20, y: 20)

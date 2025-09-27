@@ -60,8 +60,8 @@ The Swift API now includes helpers to:
 - configure window titles, fullscreen state, sizing constraints, z-order, and visibility;
 - request redraws or reposition windows without touching tao directly;
 - drive Wry webviews via navigation, reload, JavaScript evaluation, zoom control, visibility toggles, and browsing-data clearing.
-- toggle advanced window capabilities including decorations, always-on-bottom/workspace visibility, content protection, focus/focusable state, cursor controls, drag gestures, taskbar presence, and attention requests.
+- toggle advanced window capabilities including decorations, always-on-bottom/workspace visibility, content protection, focus/focusable state, cursor controls, drag gestures, and attention requests.
 
 ### Runtime Lifecycle
 
-`VeloxRuntimeWry.Runtime` wraps `tauri-runtime-wry::Wry`, allowing Swift code to run per-iteration callbacks over Tauri's `RunEvent` stream and request clean exits, laying the groundwork for exposing the full runtime dispatcher APIs. It can now materialise dispatcher-backed windows via `createWindow(...)`, returning the same `Window`/`Webview` handles Swift already uses so runtime-managed instances participate in the existing control surface.
+`VeloxRuntimeWry.Runtime` is in the middle of a Swift-native rewrite. The class currently advertises availability but returns `nil` on unsupported hosts while the new runtime layer evolves; the event-loop based APIs remain the primary entry point until the dedicated Swift runtime is feature-complete.

@@ -12,11 +12,6 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_event_loop_create_proxy;
   (void)velox_event_loop_proxy_request_exit;
   (void)velox_event_loop_proxy_free;
-  (void)velox_runtime_new;
-  (void)velox_runtime_free;
-  (void)velox_runtime_run_iteration;
-  (void)velox_runtime_request_exit;
-  (void)velox_runtime_create_window;
   (void)velox_window_build;
   (void)velox_window_free;
   (void)velox_window_set_title;
@@ -37,7 +32,6 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_window_clear_user_attention;
   (void)velox_window_focus;
   (void)velox_window_set_focusable;
-  (void)velox_window_set_skip_taskbar;
   (void)velox_window_set_cursor_grab;
   (void)velox_window_set_cursor_visible;
   (void)velox_window_set_cursor_position;

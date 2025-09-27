@@ -28,10 +28,6 @@ typedef struct {
   char _unused;
 } VeloxWebviewHandle;
 
-typedef struct {
-  char _unused;
-} VeloxRuntimeHandle;
-
 typedef enum {
   VELOX_CONTROL_FLOW_POLL = 0,
   VELOX_CONTROL_FLOW_WAIT = 1,
@@ -65,7 +61,6 @@ typedef enum {
 } VeloxResizeDirection;
 
 typedef VeloxControlFlow (*VeloxEventLoopCallback)(const char *event_description, void *user_data);
-typedef void (*VeloxRuntimeCallback)(const char *event_description, void *user_data);
 
 VeloxEventLoopHandle *velox_event_loop_new(void);
 void velox_event_loop_free(VeloxEventLoopHandle *event_loop);
@@ -78,19 +73,6 @@ void velox_event_loop_pump(
 VeloxEventLoopProxyHandle *velox_event_loop_create_proxy(VeloxEventLoopHandle *event_loop);
 bool velox_event_loop_proxy_request_exit(VeloxEventLoopProxyHandle *proxy);
 void velox_event_loop_proxy_free(VeloxEventLoopProxyHandle *proxy);
-
-VeloxRuntimeHandle *velox_runtime_new(void);
-void velox_runtime_free(VeloxRuntimeHandle *runtime);
-void velox_runtime_run_iteration(
-  VeloxRuntimeHandle *runtime,
-  VeloxRuntimeCallback callback,
-  void *user_data
-);
-bool velox_runtime_request_exit(VeloxRuntimeHandle *runtime, int32_t code);
-VeloxWindowHandle *velox_runtime_create_window(
-  VeloxRuntimeHandle *runtime,
-  const VeloxWindowConfig *config
-);
 
 VeloxWindowHandle *velox_window_build(VeloxEventLoopHandle *event_loop, const VeloxWindowConfig *config);
 void velox_window_free(VeloxWindowHandle *window);
@@ -118,7 +100,6 @@ bool velox_window_request_user_attention(
 bool velox_window_clear_user_attention(VeloxWindowHandle *window);
 bool velox_window_focus(VeloxWindowHandle *window);
 bool velox_window_set_focusable(VeloxWindowHandle *window, bool focusable);
-bool velox_window_set_skip_taskbar(VeloxWindowHandle *window, bool skip);
 bool velox_window_set_cursor_grab(VeloxWindowHandle *window, bool grab);
 bool velox_window_set_cursor_visible(VeloxWindowHandle *window, bool visible);
 bool velox_window_set_cursor_position(
