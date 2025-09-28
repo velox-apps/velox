@@ -32,7 +32,7 @@ typedef enum {
   VELOX_CONTROL_FLOW_POLL = 0,
   VELOX_CONTROL_FLOW_WAIT = 1,
   VELOX_CONTROL_FLOW_EXIT = 2,
-} VeloxControlFlow;
+} VeloxEventLoopControlFlow;
 
 typedef struct {
   uint32_t width;
@@ -60,7 +60,7 @@ typedef enum {
   VELOX_RESIZE_DIRECTION_WEST = 7,
 } VeloxResizeDirection;
 
-typedef VeloxControlFlow (*VeloxEventLoopCallback)(const char *event_description, void *user_data);
+typedef VeloxEventLoopControlFlow (*VeloxEventLoopCallback)(const char *event_description, void *user_data);
 
 VeloxEventLoopHandle *velox_event_loop_new(void);
 void velox_event_loop_free(VeloxEventLoopHandle *event_loop);
@@ -76,6 +76,7 @@ void velox_event_loop_proxy_free(VeloxEventLoopProxyHandle *proxy);
 
 VeloxWindowHandle *velox_window_build(VeloxEventLoopHandle *event_loop, const VeloxWindowConfig *config);
 void velox_window_free(VeloxWindowHandle *window);
+const char *velox_window_identifier(VeloxWindowHandle *window);
 bool velox_window_set_title(VeloxWindowHandle *window, const char *title);
 bool velox_window_set_fullscreen(VeloxWindowHandle *window, bool fullscreen);
 bool velox_window_set_decorations(VeloxWindowHandle *window, bool decorations);

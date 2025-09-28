@@ -29,6 +29,7 @@ static WEBVIEW_VERSION: OnceLock<CString> = OnceLock::new();
 #[derive(Debug, Clone)]
 enum VeloxUserEvent {
     Exit,
+    Custom(String),
 }
 
 pub struct VeloxEventLoop {
@@ -41,6 +42,7 @@ pub struct VeloxEventLoopProxyHandle {
 
 pub struct VeloxWindowHandle {
     window: Window,
+    identifier: CString,
 }
 
 pub struct VeloxWebviewHandle {
@@ -49,7 +51,7 @@ pub struct VeloxWebviewHandle {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum VeloxControlFlow {
+pub enum VeloxEventLoopControlFlow {
     Poll = 0,
     Wait = 1,
     Exit = 2,
@@ -90,7 +92,7 @@ pub enum VeloxResizeDirection {
 }
 
 pub type VeloxEventLoopCallback = Option<
-    extern "C" fn(event_description: *const c_char, user_data: *mut c_void) -> VeloxControlFlow,
+    extern "C" fn(event_description: *const c_char, user_data: *mut c_void) -> VeloxEventLoopControlFlow,
 >;
 
 fn cached_cstring(storage: &OnceLock<CString>, builder: impl FnOnce() -> String) -> *const c_char {
@@ -192,6 +194,23 @@ pub extern "C" fn velox_event_loop_proxy_request_exit(
 }
 
 #[no_mangle]
+pub extern "C" fn velox_event_loop_proxy_send_user_event(
+    proxy: *mut VeloxEventLoopProxyHandle,
+    payload: *const c_char,
+) -> bool {
+    if proxy.is_null() {
+        return false;
+    }
+
+    let proxy = unsafe { &mut *proxy };
+    let message = opt_cstring(payload).unwrap_or_default();
+    proxy
+        .proxy
+        .send_event(VeloxUserEvent::Custom(message))
+        .is_ok()
+}
+
+#[no_mangle]
 pub extern "C" fn velox_event_loop_proxy_free(proxy: *mut VeloxEventLoopProxyHandle) {
     if !proxy.is_null() {
         unsafe { drop(Box::from_raw(proxy)) };
@@ -217,9 +236,9 @@ pub extern "C" fn velox_event_loop_pump(
                 if let Ok(c_description) = CString::new(description) {
                     let desired_flow = cb(c_description.as_ptr(), user_data);
                     match desired_flow {
-                        VeloxControlFlow::Poll => *control_flow = ControlFlow::Poll,
-                        VeloxControlFlow::Wait => *control_flow = ControlFlow::Wait,
-                        VeloxControlFlow::Exit => *control_flow = ControlFlow::Exit,
+                        VeloxEventLoopControlFlow::Poll => *control_flow = ControlFlow::Poll,
+                        VeloxEventLoopControlFlow::Wait => *control_flow = ControlFlow::Wait,
+                        VeloxEventLoopControlFlow::Exit => *control_flow = ControlFlow::Exit,
                     }
                 } else {
                     *control_flow = ControlFlow::Exit;
@@ -275,7 +294,12 @@ pub extern "C" fn velox_window_build(
         });
 
     match result {
-        Some(Ok(window)) => Box::into_raw(Box::new(VeloxWindowHandle { window })),
+        Some(Ok(window)) => {
+            let id_string = format!("{:?}", window.id());
+            let identifier = CString::new(id_string)
+                .unwrap_or_else(|_| CString::new("velox-window").expect("static string has no nulls"));
+            Box::into_raw(Box::new(VeloxWindowHandle { window, identifier }))
+        }
         _ => ptr::null_mut(),
     }
 }
@@ -285,6 +309,15 @@ pub extern "C" fn velox_window_free(window: *mut VeloxWindowHandle) {
     if !window.is_null() {
         unsafe { drop(Box::from_raw(window)) };
     }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_identifier(window: *mut VeloxWindowHandle) -> *const c_char {
+    if window.is_null() {
+        return ptr::null();
+    }
+
+    unsafe { &*window }.identifier.as_ptr()
 }
 
 #[no_mangle]
@@ -697,6 +730,10 @@ fn serialize_event(event: &Event<VeloxUserEvent>) -> String {
             "window_id": format!("{window_id:?}"),
         }),
         Event::UserEvent(VeloxUserEvent::Exit) => json!({ "type": "user-exit" }),
+        Event::UserEvent(VeloxUserEvent::Custom(payload)) => json!({
+            "type": "user-event",
+            "payload": payload,
+        }),
         Event::DeviceEvent {
             device_id, event, ..
         } => json!({

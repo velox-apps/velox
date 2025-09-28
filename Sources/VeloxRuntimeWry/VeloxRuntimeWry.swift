@@ -1,10 +1,15 @@
 import Foundation
+import VeloxRuntime
 import VeloxRuntimeWryFFI
 
 /// Convenience wrapper around the Rust FFI exported by `velox-runtime-wry-ffi`.
 /// This provides a Swift-first surface that mirrors the original Tauri `wry`
 /// runtime API naming while renaming public symbols to the Velox domain.
 public enum VeloxRuntimeWry {
+  public enum RuntimeError: Swift.Error {
+    case unsupported
+  }
+
   /// Describes the versions of the Velox runtime and the underlying WebView
   /// implementation.
   public struct Version: Sendable, Hashable {
@@ -61,24 +66,230 @@ public enum VeloxRuntimeWry {
 }
 
 public extension VeloxRuntimeWry {
-  /// Placeholder runtime shim. The full Swift port is still under construction, so the type currently
-  /// reports itself as unavailable to avoid panics from unsupported configurations.
-  final class Runtime {
-    public init?() {
-      return nil
+  /// Swift-native runtime adapter that drives the tao event loop without relying on tauri-runtime.
+  final class Runtime: VeloxRuntime {
+    public typealias Event = VeloxRuntimeWry.Event
+    public typealias Handle = Runtime
+    public typealias EventLoopProxyType = EventLoopProxyAdapter
+
+    private struct WindowState {
+      let label: String
+      let taoIdentifier: String
+      let window: Window
+      var webview: Webview?
     }
 
-    public func runIteration(_ handler: @escaping @Sendable (Event) -> Void) {
-      _ = handler
+    private let eventLoop: EventLoop
+    private let eventLoopProxy: EventLoopProxy?
+    private let stateLock = NSLock()
+    private var windows: [ObjectIdentifier: WindowState] = [:]
+    private var windowsByLabel: [String: ObjectIdentifier] = [:]
+    private var windowsByTaoIdentifier: [String: ObjectIdentifier] = [:]
+
+    public static func make(args _: VeloxRuntimeInitArgs) throws -> Runtime {
+      guard Thread.isMainThread else {
+        throw VeloxRuntimeError.failed(description: "VeloxRuntimeWry.Runtime must be created on the main thread")
+      }
+      guard let eventLoop = EventLoop() else {
+        throw VeloxRuntimeError.unsupported
+      }
+      return Runtime(eventLoop: eventLoop)
+    }
+
+    public convenience init?() {
+      guard Thread.isMainThread else {
+        return nil
+      }
+      guard let eventLoop = EventLoop() else {
+        return nil
+      }
+      self.init(eventLoop: eventLoop)
+    }
+
+    private init(eventLoop: EventLoop) {
+      self.eventLoop = eventLoop
+      self.eventLoopProxy = eventLoop.makeProxy()
+    }
+
+    public func handle() -> Runtime { self }
+
+    public func createProxy() throws -> EventLoopProxyAdapter {
+      guard let proxy = eventLoopProxy else {
+        throw VeloxRuntimeError.unsupported
+      }
+      return EventLoopProxyAdapter(proxy: proxy)
+    }
+
+    public func createWindow(
+      pending: VeloxPendingWindow<Event>
+    ) throws -> VeloxDetachedWindow<Event, Window, Webview> {
+      guard let window = eventLoop.makeWindow(configuration: .init(title: pending.label)) else {
+        throw VeloxRuntimeError.unsupported
+      }
+      return registerWindow(window, label: pending.label)
+    }
+
+    public func createWebview(
+      window identifier: ObjectIdentifier,
+      pending _: VeloxPendingWebview<Event>
+    ) throws -> Webview {
+      let state: WindowState? = {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return windows[identifier]
+      }()
+
+      guard let state else {
+        throw VeloxRuntimeError.failed(description: "window not found")
+      }
+
+      guard let webview = state.window.makeWebview() else {
+        throw VeloxRuntimeError.unsupported
+      }
+
+      stateLock.lock()
+      var updated = state
+      updated.webview = webview
+      windows[identifier] = updated
+      stateLock.unlock()
+
+      return webview
+    }
+
+    public func runIteration(
+      handler: @Sendable @escaping (VeloxRunEvent<Event>) -> VeloxControlFlow
+    ) {
+      eventLoop.pump { event in
+        let flow = handler(self.toRunEvent(from: event))
+        switch flow {
+        case .poll: return ControlFlow.poll
+        case .wait: return ControlFlow.wait
+        case .exit: return ControlFlow.exit
+        }
+      }
+    }
+
+    public func requestExit(code: Int32) throws {
+      guard let proxy = eventLoopProxy else {
+        throw VeloxRuntimeError.unsupported
+      }
+      guard proxy.requestExit() else {
+        throw VeloxRuntimeError.failed(description: "failed to signal event loop exit")
+      }
     }
 
     @discardableResult
-    public func requestExit(code _: Int32 = 0) -> Bool {
-      false
+    public func requestExitIfPossible(code: Int32 = 0) -> Bool {
+      (try? requestExit(code: code)) != nil
     }
 
-    public func createWindow(configuration _: WindowConfiguration? = nil) -> Window? {
-      nil
+    @discardableResult
+    public func createWindow(
+      configuration: WindowConfiguration? = nil,
+      label: String? = nil
+    ) throws -> VeloxDetachedWindow<Event, Window, Webview> {
+      guard let window = eventLoop.makeWindow(configuration: configuration) else {
+        throw VeloxRuntimeError.unsupported
+      }
+      let resolvedLabel = label ?? configuration?.title ?? makeDefaultLabel(for: window)
+      return registerWindow(window, label: resolvedLabel)
+    }
+
+    public func windowIdentifier(forLabel label: String) -> ObjectIdentifier? {
+      stateLock.lock()
+      defer { stateLock.unlock() }
+      return windowsByLabel[label]
+    }
+
+    public func window(for label: String) -> Window? {
+      stateLock.lock()
+      defer { stateLock.unlock() }
+      guard let identifier = windowsByLabel[label], let state = windows[identifier] else {
+        return nil
+      }
+      return state.window
+    }
+
+    private func registerWindow(
+      _ window: Window,
+      label: String,
+      webview: Webview? = nil
+    ) -> VeloxDetachedWindow<Event, Window, Webview> {
+      let identifier = ObjectIdentifier(window)
+      let taoIdentifier = window.taoIdentifier
+      let state = WindowState(label: label, taoIdentifier: taoIdentifier, window: window, webview: webview)
+      stateLock.lock()
+      windows[identifier] = state
+      windowsByLabel[label] = identifier
+      windowsByTaoIdentifier[taoIdentifier] = identifier
+      stateLock.unlock()
+      return VeloxDetachedWindow(id: identifier, label: label, dispatcher: window, webview: webview)
+    }
+
+    private func makeDefaultLabel(for window: Window) -> String {
+      "window-\(window.taoIdentifier)"
+    }
+
+    private func label(forWindowIdentifier identifier: String) -> String {
+      stateLock.lock()
+      defer { stateLock.unlock() }
+      if let objectIdentifier = windowsByTaoIdentifier[identifier], let state = windows[objectIdentifier] {
+        return state.label
+      }
+      return identifier
+    }
+
+    private func removeWindow(forWindowIdentifier identifier: String) -> String? {
+      stateLock.lock()
+      defer { stateLock.unlock() }
+      guard let objectIdentifier = windowsByTaoIdentifier.removeValue(forKey: identifier) else {
+        return nil
+      }
+      guard let state = windows.removeValue(forKey: objectIdentifier) else {
+        return nil
+      }
+      windowsByLabel.removeValue(forKey: state.label)
+      return state.label
+    }
+
+    private func toRunEvent(from event: Event) -> VeloxRunEvent<Event> {
+      switch event {
+      case .ready:
+        return .ready
+      case .loopDestroyed, .userExit:
+        return .exit
+      case let .exitRequested(code):
+        return .exitRequested(code: code)
+      case let .webviewEvent(label, _):
+        return .webviewEvent(label: label)
+      case .windowDestroyed(let windowId):
+        let label = removeWindow(forWindowIdentifier: windowId) ?? windowId
+        return .windowEvent(label: label)
+      case .windowCloseRequested(let windowId),
+        .windowResized(let windowId, _),
+        .windowMoved(let windowId, _),
+        .windowFocused(let windowId, _),
+        .windowScaleFactorChanged(let windowId, _, _),
+        .windowKeyboardInput(let windowId, _),
+        .windowImeText(let windowId, _),
+        .windowModifiersChanged(let windowId, _),
+        .windowCursorMoved(let windowId, _),
+        .windowCursorEntered(let windowId, _),
+        .windowCursorLeft(let windowId, _),
+        .windowMouseInput(let windowId, _),
+        .windowMouseWheel(let windowId, _, _),
+        .windowDroppedFile(let windowId, _),
+        .windowHoveredFile(let windowId, _),
+        .windowHoveredFileCancelled(let windowId),
+        .windowThemeChanged(let windowId, _),
+        .windowEvent(let windowId, _):
+        let label = label(forWindowIdentifier: windowId)
+        return .windowEvent(label: label)
+      case let .raw(description):
+        return .raw(description: description)
+      default:
+        return .userEvent(event)
+      }
     }
   }
 
@@ -159,7 +370,7 @@ public extension VeloxRuntimeWry {
     private static let callback: @convention(c) (
       UnsafePointer<CChar>?,
       UnsafeMutableRawPointer?
-    ) -> VeloxControlFlow = { event, userData in
+    ) -> VeloxRuntimeWryFFI.VeloxEventLoopControlFlow = { event, userData in
       guard let userData else {
         return VELOX_CONTROL_FLOW_EXIT
       }
@@ -168,7 +379,7 @@ public extension VeloxRuntimeWry {
       let json = event.map { String(cString: $0) } ?? "{}"
       let parsedEvent = Event(fromJSON: json)
       let flow = box.handler(parsedEvent)
-      return VeloxControlFlow(rawValue: UInt32(flow.rawValue))
+      return VeloxRuntimeWryFFI.VeloxEventLoopControlFlow(rawValue: UInt32(flow.rawValue))
     }
   }
 
@@ -223,6 +434,10 @@ public extension VeloxRuntimeWry {
 
     deinit {
       velox_window_free(raw)
+    }
+
+    fileprivate var taoIdentifier: String {
+      string(from: velox_window_identifier(raw))
     }
 
     /// Builds a Wry webview attached to the window.
@@ -869,6 +1084,44 @@ private enum VeloxEventDecoder {
 
   static func array(_ value: Any?) -> [Any]? {
     value as? [Any]
+  }
+}
+
+extension VeloxRuntimeWry.Runtime: VeloxRuntimeHandle {
+  public typealias WindowDispatcher = VeloxRuntimeWry.Window
+  public typealias WebviewDispatcher = VeloxRuntimeWry.Webview
+}
+
+extension VeloxRuntimeWry.Window: VeloxWindowDispatcher {
+  public typealias Event = VeloxRuntimeWry.Event
+  public typealias Identifier = ObjectIdentifier
+}
+
+extension VeloxRuntimeWry.Webview: VeloxWebviewDispatcher {
+  public typealias Event = VeloxRuntimeWry.Event
+  public typealias Identifier = ObjectIdentifier
+}
+
+extension VeloxRuntimeWry.Event: VeloxUserEvent {}
+
+public final class EventLoopProxyAdapter: VeloxEventLoopProxy {
+  public typealias Event = VeloxRuntimeWry.Event
+
+  private let proxy: VeloxRuntimeWry.EventLoopProxy
+
+  init(proxy: VeloxRuntimeWry.EventLoopProxy) {
+    self.proxy = proxy
+  }
+
+  public func send(event: VeloxRuntimeWry.Event) throws {
+    switch event {
+    case .userExit, .exitRequested(_):
+      guard proxy.requestExit() else {
+        throw VeloxRuntimeError.failed(description: "failed to signal event loop")
+      }
+    default:
+      throw VeloxRuntimeError.unsupported
+    }
   }
 }
 

@@ -9,11 +9,19 @@ let package = Package(
   ],
   products: [
     .library(
+      name: "VeloxRuntime",
+      targets: ["VeloxRuntime"]
+    ),
+    .library(
       name: "VeloxRuntimeWry",
       targets: ["VeloxRuntimeWry"]
     )
   ],
   targets: [
+    .target(
+      name: "VeloxRuntime",
+      path: "Sources/VeloxRuntime"
+    ),
     .target(
       name: "VeloxRuntimeWryFFI",
       path: "Sources/VeloxRuntimeWryFFI",
@@ -22,7 +30,7 @@ let package = Package(
     ),
     .target(
       name: "VeloxRuntimeWry",
-      dependencies: ["VeloxRuntimeWryFFI"],
+      dependencies: ["VeloxRuntime", "VeloxRuntimeWryFFI"],
       path: "Sources/VeloxRuntimeWry",
       linkerSettings: [
         .unsafeFlags(["-L", "runtime-wry-ffi/target/debug"], .when(configuration: .debug)),

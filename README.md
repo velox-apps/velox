@@ -64,4 +64,4 @@ The Swift API now includes helpers to:
 
 ### Runtime Lifecycle
 
-`VeloxRuntimeWry.Runtime` is in the middle of a Swift-native rewrite. The class currently advertises availability but returns `nil` on unsupported hosts while the new runtime layer evolves; the event-loop based APIs remain the primary entry point until the dedicated Swift runtime is feature-complete.
+Velox now ships a nascent `VeloxRuntime` module that defines the Swift-first protocols mirroring Tauri's runtime traits. `VeloxRuntimeWry.Runtime` remains a stub while the native implementation is completed; the event-loop based APIs remain the primary entry point until the dedicated Swift runtime is feature-complete.

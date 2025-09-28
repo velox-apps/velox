@@ -14,6 +14,7 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_event_loop_proxy_free;
   (void)velox_window_build;
   (void)velox_window_free;
+  (void)velox_window_identifier;
   (void)velox_window_set_title;
   (void)velox_window_set_fullscreen;
   (void)velox_window_set_decorations;
