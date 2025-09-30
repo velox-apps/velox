@@ -11,6 +11,7 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_event_loop_pump;
   (void)velox_event_loop_create_proxy;
   (void)velox_event_loop_proxy_request_exit;
+  (void)velox_event_loop_proxy_send_user_event;
   (void)velox_event_loop_proxy_free;
   (void)velox_window_build;
   (void)velox_window_free;
@@ -48,4 +49,29 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_webview_show;
   (void)velox_webview_hide;
   (void)velox_webview_clear_browsing_data;
+  (void)velox_tray_new;
+  (void)velox_tray_free;
+  (void)velox_tray_identifier;
+  (void)velox_tray_set_title;
+  (void)velox_tray_set_tooltip;
+  (void)velox_tray_set_visible;
+  (void)velox_tray_set_show_menu_on_left_click;
+  (void)velox_tray_set_menu;
+#if defined(__APPLE__)
+  (void)velox_menu_bar_new;
+  (void)velox_menu_bar_new_with_id;
+  (void)velox_menu_bar_free;
+  (void)velox_menu_bar_identifier;
+  (void)velox_menu_bar_append_submenu;
+  (void)velox_menu_bar_set_app_menu;
+  (void)velox_submenu_new;
+  (void)velox_submenu_new_with_id;
+  (void)velox_submenu_free;
+  (void)velox_submenu_identifier;
+  (void)velox_submenu_append_item;
+  (void)velox_menu_item_new;
+  (void)velox_menu_item_free;
+  (void)velox_menu_item_set_enabled;
+  (void)velox_menu_item_identifier;
+#endif
 }

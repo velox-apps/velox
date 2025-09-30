@@ -1,10 +1,18 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::sync::OnceLock;
+#[cfg(target_os = "macos")]
+use std::{cell::RefCell, rc::Rc};
 
+#[cfg(target_os = "macos")]
+use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+#[cfg(target_os = "macos")]
+use muda::{accelerator::Accelerator, Menu, MenuEvent, MenuId, MenuItem, Submenu};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Map};
 use tao::{
     dpi::{LogicalPosition, LogicalSize, Size},
     event::{
@@ -30,6 +38,10 @@ static WEBVIEW_VERSION: OnceLock<CString> = OnceLock::new();
 enum VeloxUserEvent {
     Exit,
     Custom(String),
+    #[cfg(target_os = "macos")]
+    Menu(String),
+    #[cfg(target_os = "macos")]
+    Tray(VeloxTrayEvent),
 }
 
 pub struct VeloxEventLoop {
@@ -47,6 +59,173 @@ pub struct VeloxWindowHandle {
 
 pub struct VeloxWebviewHandle {
     webview: WebView,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxMenuBarHandle {
+    menu: Menu,
+    submenus: Vec<Rc<RefCell<Submenu>>>,
+    identifier: CString,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxSubmenuHandle {
+    submenu: Rc<RefCell<Submenu>>,
+    identifier: CString,
+    items: Vec<MenuItem>,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxMenuItemHandle {
+    item: MenuItem,
+    identifier: CString,
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxMenuBarHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxSubmenuHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxMenuItemHandle {
+    _private: (),
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxTrayHandle {
+    tray: TrayIcon,
+    menu: Option<TrayMenu>,
+    identifier: CString,
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxTrayHandle {
+    _private: (),
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone)]
+struct VeloxTrayEvent {
+    identifier: String,
+    kind: VeloxTrayEventKind,
+    position: Option<(f64, f64)>,
+    rect: Option<VeloxTrayRect>,
+    button: Option<String>,
+    button_state: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Copy)]
+enum VeloxTrayEventKind {
+    Click,
+    DoubleClick,
+    Enter,
+    Move,
+    Leave,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Copy)]
+struct VeloxTrayRect {
+    origin_x: f64,
+    origin_y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[cfg(target_os = "macos")]
+impl From<tray_icon::Rect> for VeloxTrayRect {
+    fn from(rect: tray_icon::Rect) -> Self {
+        Self {
+            origin_x: rect.position.x,
+            origin_y: rect.position.y,
+            width: rect.size.width as f64,
+            height: rect.size.height as f64,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl From<tray_icon::TrayIconEvent> for VeloxTrayEvent {
+    fn from(event: tray_icon::TrayIconEvent) -> Self {
+        match event {
+            TrayIconEvent::Click {
+                id,
+                position,
+                rect,
+                button,
+                button_state,
+            } => Self {
+                identifier: id.as_ref().to_string(),
+                kind: VeloxTrayEventKind::Click,
+                position: Some((position.x, position.y)),
+                rect: Some(rect.into()),
+                button: Some(match button {
+                    tray_icon::MouseButton::Left => "left".to_string(),
+                    tray_icon::MouseButton::Right => "right".to_string(),
+                    tray_icon::MouseButton::Middle => "middle".to_string(),
+                }),
+                button_state: Some(match button_state {
+                    tray_icon::MouseButtonState::Up => "up".to_string(),
+                    tray_icon::MouseButtonState::Down => "down".to_string(),
+                }),
+            },
+            TrayIconEvent::DoubleClick {
+                id,
+                position,
+                rect,
+                button,
+            } => Self {
+                identifier: id.as_ref().to_string(),
+                kind: VeloxTrayEventKind::DoubleClick,
+                position: Some((position.x, position.y)),
+                rect: Some(rect.into()),
+                button: Some(match button {
+                    tray_icon::MouseButton::Left => "left".to_string(),
+                    tray_icon::MouseButton::Right => "right".to_string(),
+                    tray_icon::MouseButton::Middle => "middle".to_string(),
+                }),
+                button_state: None,
+            },
+            TrayIconEvent::Enter { id, position, rect } => Self {
+                identifier: id.as_ref().to_string(),
+                kind: VeloxTrayEventKind::Enter,
+                position: Some((position.x, position.y)),
+                rect: Some(rect.into()),
+                button: None,
+                button_state: None,
+            },
+            TrayIconEvent::Move { id, position, rect } => Self {
+                identifier: id.as_ref().to_string(),
+                kind: VeloxTrayEventKind::Move,
+                position: Some((position.x, position.y)),
+                rect: Some(rect.into()),
+                button: None,
+                button_state: None,
+            },
+            TrayIconEvent::Leave { id, position, rect } => Self {
+                identifier: id.as_ref().to_string(),
+                kind: VeloxTrayEventKind::Leave,
+                position: Some((position.x, position.y)),
+                rect: Some(rect.into()),
+                button: None,
+                button_state: None,
+            },
+            other => Self {
+                identifier: other.id().as_ref().to_string(),
+                kind: VeloxTrayEventKind::Move,
+                position: None,
+                rect: None,
+                button: None,
+                button_state: None,
+            },
+        }
+    }
 }
 
 #[repr(C)]
@@ -72,6 +251,28 @@ pub struct VeloxWebviewConfig {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct VeloxTrayConfig {
+    pub identifier: *const c_char,
+    pub title: *const c_char,
+    pub tooltip: *const c_char,
+    pub visible: bool,
+    pub show_menu_on_left_click: bool,
+}
+
+impl Default for VeloxTrayConfig {
+    fn default() -> Self {
+        Self {
+            identifier: ptr::null(),
+            title: ptr::null(),
+            tooltip: ptr::null(),
+            visible: true,
+            show_menu_on_left_click: true,
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VeloxUserAttentionType {
     Informational = 0,
@@ -92,7 +293,10 @@ pub enum VeloxResizeDirection {
 }
 
 pub type VeloxEventLoopCallback = Option<
-    extern "C" fn(event_description: *const c_char, user_data: *mut c_void) -> VeloxEventLoopControlFlow,
+    extern "C" fn(
+        event_description: *const c_char,
+        user_data: *mut c_void,
+    ) -> VeloxEventLoopControlFlow,
 >;
 
 fn cached_cstring(storage: &OnceLock<CString>, builder: impl FnOnce() -> String) -> *const c_char {
@@ -107,6 +311,20 @@ fn opt_cstring(ptr: *const c_char) -> Option<String> {
     } else {
         unsafe { CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_owned()) }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn guard_panic<T>(f: impl FnOnce() -> *mut T) -> *mut T {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(ptr) => ptr,
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_app_state_force_launched() {
+    tao::platform::macos::force_app_state_launched_for_testing();
 }
 
 fn with_window<R>(window: *mut VeloxWindowHandle, f: impl FnOnce(&Window) -> R) -> Option<R> {
@@ -156,15 +374,32 @@ pub extern "C" fn velox_runtime_wry_webview_version() -> *const c_char {
 
 #[no_mangle]
 pub extern "C" fn velox_event_loop_new() -> *mut VeloxEventLoop {
-    Box::into_raw(Box::new(VeloxEventLoop {
-        event_loop: EventLoopBuilder::<VeloxUserEvent>::with_user_event().build(),
-    }))
+    let event_loop = EventLoopBuilder::<VeloxUserEvent>::with_user_event().build();
+
+    #[cfg(target_os = "macos")]
+    {
+        let proxy = event_loop.create_proxy();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            let _ = proxy.send_event(VeloxUserEvent::Menu(event.id().as_ref().to_string()));
+        }));
+
+        let tray_proxy = event_loop.create_proxy();
+        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+            let _ = tray_proxy.send_event(VeloxUserEvent::Tray(event.into()));
+        }));
+    }
+
+    Box::into_raw(Box::new(VeloxEventLoop { event_loop }))
 }
 
 #[no_mangle]
 pub extern "C" fn velox_event_loop_free(event_loop: *mut VeloxEventLoop) {
     if !event_loop.is_null() {
         unsafe { drop(Box::from_raw(event_loop)) };
+        #[cfg(target_os = "macos")]
+        MenuEvent::set_event_handler::<fn(MenuEvent)>(None);
+        #[cfg(target_os = "macos")]
+        TrayIconEvent::set_event_handler::<fn(TrayIconEvent)>(None);
     }
 }
 
@@ -175,6 +410,9 @@ pub extern "C" fn velox_event_loop_create_proxy(
     if event_loop.is_null() {
         return ptr::null_mut();
     }
+
+    #[cfg(target_os = "macos")]
+    tao::platform::macos::force_app_state_launched_for_testing();
 
     let event_loop = unsafe { &mut *event_loop };
     let proxy = event_loop.event_loop.create_proxy();
@@ -215,6 +453,411 @@ pub extern "C" fn velox_event_loop_proxy_free(proxy: *mut VeloxEventLoopProxyHan
     if !proxy.is_null() {
         unsafe { drop(Box::from_raw(proxy)) };
     }
+}
+
+#[cfg(target_os = "macos")]
+fn accelerator_from_ptr(ptr: *const c_char) -> Option<Accelerator> {
+    opt_cstring(ptr)?.parse().ok()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_new() -> *mut VeloxMenuBarHandle {
+    guard_panic(|| {
+        let menu = Menu::new();
+        let identifier = CString::new(menu.id().as_ref()).expect("menu id contains null byte");
+        Box::into_raw(Box::new(VeloxMenuBarHandle {
+            menu,
+            submenus: Vec::new(),
+            identifier,
+        }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_new_with_id(id: *const c_char) -> *mut VeloxMenuBarHandle {
+    guard_panic(|| {
+        let identifier_string = opt_cstring(id).unwrap_or_default();
+        let menu = Menu::with_id(MenuId::new(identifier_string.clone()));
+        let identifier = CString::new(identifier_string).expect("menu id contains null byte");
+        Box::into_raw(Box::new(VeloxMenuBarHandle {
+            menu,
+            submenus: Vec::new(),
+            identifier,
+        }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_free(menu: *mut VeloxMenuBarHandle) {
+    if !menu.is_null() {
+        unsafe { drop(Box::from_raw(menu)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_identifier(menu: *mut VeloxMenuBarHandle) -> *const c_char {
+    let Some(menu) = (unsafe { menu.as_ref() }) else {
+        return ptr::null();
+    };
+    menu.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_append_submenu(
+    menu: *mut VeloxMenuBarHandle,
+    submenu: *mut VeloxSubmenuHandle,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return false;
+    };
+
+    let result = {
+        let submenu_ref = submenu.submenu.borrow();
+        menu.menu.append(&*submenu_ref)
+    };
+
+    if result.is_ok() {
+        menu.submenus.push(submenu.submenu.clone());
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_set_app_menu(menu: *mut VeloxMenuBarHandle) -> bool {
+    let Some(menu) = (unsafe { menu.as_ref() }) else {
+        return false;
+    };
+    menu.menu.init_for_nsapp();
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_new(
+    title: *const c_char,
+    enabled: bool,
+) -> *mut VeloxSubmenuHandle {
+    guard_panic(|| {
+        let title = opt_cstring(title).unwrap_or_default();
+        let submenu = Submenu::new(title, enabled);
+        let identifier =
+            CString::new(submenu.id().as_ref()).expect("submenu id contains null byte");
+        Box::into_raw(Box::new(VeloxSubmenuHandle {
+            submenu: Rc::new(RefCell::new(submenu)),
+            identifier,
+            items: Vec::new(),
+        }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_new_with_id(
+    id: *const c_char,
+    title: *const c_char,
+    enabled: bool,
+) -> *mut VeloxSubmenuHandle {
+    guard_panic(|| {
+        let title = opt_cstring(title).unwrap_or_default();
+        let id_string = opt_cstring(id).unwrap_or_default();
+        let submenu = Submenu::with_id(MenuId::new(id_string.clone()), title, enabled);
+        let identifier = CString::new(id_string).expect("submenu id contains null byte");
+        Box::into_raw(Box::new(VeloxSubmenuHandle {
+            submenu: Rc::new(RefCell::new(submenu)),
+            identifier,
+            items: Vec::new(),
+        }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_free(submenu: *mut VeloxSubmenuHandle) {
+    if !submenu.is_null() {
+        unsafe { drop(Box::from_raw(submenu)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_identifier(submenu: *mut VeloxSubmenuHandle) -> *const c_char {
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return ptr::null();
+    };
+    submenu.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_append_item(
+    submenu: *mut VeloxSubmenuHandle,
+    item: *mut VeloxMenuItemHandle,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return false;
+    };
+
+    if submenu.submenu.borrow().append(&item.item).is_ok() {
+        submenu.items.push(item.item.clone());
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_new(
+    id: *const c_char,
+    title: *const c_char,
+    enabled: bool,
+    accelerator: *const c_char,
+) -> *mut VeloxMenuItemHandle {
+    guard_panic(|| {
+        let title = opt_cstring(title).unwrap_or_default();
+        let accelerator = accelerator_from_ptr(accelerator);
+        let item = if let Some(id) = opt_cstring(id) {
+            MenuItem::with_id(MenuId::new(id.clone()), title, enabled, accelerator)
+        } else {
+            MenuItem::new(title, enabled, accelerator)
+        };
+        let identifier = CString::new(item.id().as_ref()).expect("menu item id contains null byte");
+        Box::into_raw(Box::new(VeloxMenuItemHandle { item, identifier }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_free(item: *mut VeloxMenuItemHandle) {
+    if !item.is_null() {
+        unsafe { drop(Box::from_raw(item)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_set_enabled(
+    item: *mut VeloxMenuItemHandle,
+    enabled: bool,
+) -> bool {
+    let Some(item) = (unsafe { item.as_mut() }) else {
+        return false;
+    };
+    item.item.set_enabled(enabled);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> *const c_char {
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return ptr::null();
+    };
+    item.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_new(config: *const VeloxTrayConfig) -> *mut VeloxTrayHandle {
+    guard_panic(|| {
+        let cfg = unsafe { config.as_ref() }.copied().unwrap_or_default();
+        let identifier = opt_cstring(cfg.identifier);
+        let title = opt_cstring(cfg.title);
+        let tooltip = opt_cstring(cfg.tooltip);
+
+        let mut builder = TrayIconBuilder::new();
+        if let Some(ref id) = identifier {
+            builder = builder.with_id(id.clone());
+        }
+        if let Some(ref title) = title {
+            builder = builder.with_title(title.clone());
+        }
+        if let Some(ref tooltip) = tooltip {
+            builder = builder.with_tooltip(tooltip.clone());
+        }
+        builder = builder.with_menu_on_left_click(cfg.show_menu_on_left_click);
+
+        let tray = match builder.build() {
+            Ok(tray) => tray,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        if !cfg.visible {
+            let _ = tray.set_visible(false);
+        }
+
+        tray.set_show_menu_on_left_click(cfg.show_menu_on_left_click);
+
+        let identifier = CString::new(tray.id().as_ref())
+            .unwrap_or_else(|_| CString::new("velox-tray").expect("static string has no nulls"));
+
+        Box::into_raw(Box::new(VeloxTrayHandle {
+            tray,
+            menu: None,
+            identifier,
+        }))
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_new(_config: *const VeloxTrayConfig) -> *mut VeloxTrayHandle {
+    ptr::null_mut()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_free(tray: *mut VeloxTrayHandle) {
+    if !tray.is_null() {
+        unsafe { drop(Box::from_raw(tray)) };
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_free(_tray: *mut VeloxTrayHandle) {}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_identifier(tray: *mut VeloxTrayHandle) -> *const c_char {
+    let Some(tray) = (unsafe { tray.as_ref() }) else {
+        return ptr::null();
+    };
+    tray.identifier.as_ptr()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_identifier(_tray: *mut VeloxTrayHandle) -> *const c_char {
+    ptr::null()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_title(tray: *mut VeloxTrayHandle, title: *const c_char) -> bool {
+    let Some(tray) = (unsafe { tray.as_mut() }) else {
+        return false;
+    };
+    let result_title = opt_cstring(title);
+    tray.tray.set_title(result_title.as_deref());
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_title(_tray: *mut VeloxTrayHandle, _title: *const c_char) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_tooltip(
+    tray: *mut VeloxTrayHandle,
+    tooltip: *const c_char,
+) -> bool {
+    let Some(tray) = (unsafe { tray.as_mut() }) else {
+        return false;
+    };
+    let tooltip = opt_cstring(tooltip);
+    tray.tray.set_tooltip(tooltip.as_deref()).is_ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_tooltip(
+    _tray: *mut VeloxTrayHandle,
+    _tooltip: *const c_char,
+) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_visible(tray: *mut VeloxTrayHandle, visible: bool) -> bool {
+    let Some(tray) = (unsafe { tray.as_mut() }) else {
+        return false;
+    };
+    tray.tray.set_visible(visible).is_ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_visible(_tray: *mut VeloxTrayHandle, _visible: bool) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_show_menu_on_left_click(
+    tray: *mut VeloxTrayHandle,
+    enable: bool,
+) -> bool {
+    let Some(tray) = (unsafe { tray.as_mut() }) else {
+        return false;
+    };
+    tray.tray.set_show_menu_on_left_click(enable);
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_show_menu_on_left_click(
+    _tray: *mut VeloxTrayHandle,
+    _enable: bool,
+) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_menu(
+    tray: *mut VeloxTrayHandle,
+    menu: *mut VeloxMenuBarHandle,
+) -> bool {
+    let Some(tray) = (unsafe { tray.as_mut() }) else {
+        return false;
+    };
+
+    if menu.is_null() {
+        tray.tray
+            .set_menu(None::<Box<dyn tray_icon::menu::ContextMenu>>);
+        tray.menu = None;
+        return true;
+    }
+
+    let Some(menu_handle) = (unsafe { menu.as_ref() }) else {
+        return false;
+    };
+
+    let cloned_menu = menu_handle.menu.clone();
+    tray.tray.set_menu(Some(
+        Box::new(cloned_menu.clone()) as Box<dyn tray_icon::menu::ContextMenu>
+    ));
+    tray.menu = Some(cloned_menu);
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_tray_set_menu(
+    _tray: *mut VeloxTrayHandle,
+    _menu: *mut VeloxMenuBarHandle,
+) -> bool {
+    false
 }
 
 #[no_mangle]
@@ -269,35 +912,40 @@ pub extern "C" fn velox_window_build(
     let event_loop = unsafe { &mut *event_loop };
     let cfg = unsafe { config.as_ref().copied().unwrap_or_default() };
 
-    let mut result = None;
-    event_loop
-        .event_loop
-        .run_return(|event, target, control_flow| {
-            if let Event::NewEvents(StartCause::Init) = event {
-                let mut builder = TaoWindowBuilder::new();
+    let build_result = catch_unwind(AssertUnwindSafe(|| {
+        let mut result = None;
+        event_loop
+            .event_loop
+            .run_return(|event, target, control_flow| {
+                if let Event::NewEvents(StartCause::Init) = event {
+                    let mut builder = TaoWindowBuilder::new();
 
-                if let Some(title) = opt_cstring(cfg.title) {
-                    builder = builder.with_title(title);
+                    if let Some(title) = opt_cstring(cfg.title) {
+                        builder = builder.with_title(title);
+                    }
+
+                    if cfg.width > 0 && cfg.height > 0 {
+                        builder = builder
+                            .with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
+                    }
+
+                    result = Some(builder.build(target));
+                    *control_flow = ControlFlow::Exit;
+                    return;
                 }
 
-                if cfg.width > 0 && cfg.height > 0 {
-                    builder = builder
-                        .with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
-                }
-
-                result = Some(builder.build(target));
                 *control_flow = ControlFlow::Exit;
-                return;
-            }
+            });
 
-            *control_flow = ControlFlow::Exit;
-        });
+        result
+    }));
 
-    match result {
-        Some(Ok(window)) => {
+    match build_result {
+        Ok(Some(Ok(window))) => {
             let id_string = format!("{:?}", window.id());
-            let identifier = CString::new(id_string)
-                .unwrap_or_else(|_| CString::new("velox-window").expect("static string has no nulls"));
+            let identifier = CString::new(id_string).unwrap_or_else(|_| {
+                CString::new("velox-window").expect("static string has no nulls")
+            });
             Box::into_raw(Box::new(VeloxWindowHandle { window, identifier }))
         }
         _ => ptr::null_mut(),
@@ -734,6 +1382,48 @@ fn serialize_event(event: &Event<VeloxUserEvent>) -> String {
             "type": "user-event",
             "payload": payload,
         }),
+        #[cfg(target_os = "macos")]
+        Event::UserEvent(VeloxUserEvent::Menu(menu_id)) => json!({
+            "type": "menu-event",
+            "menu_id": menu_id,
+        }),
+        #[cfg(target_os = "macos")]
+        Event::UserEvent(VeloxUserEvent::Tray(event)) => {
+            let mut payload = Map::new();
+            payload.insert("type".into(), json!("tray-event"));
+            payload.insert("tray_id".into(), json!(event.identifier));
+            payload.insert(
+                "event_type".into(),
+                json!(match event.kind {
+                    VeloxTrayEventKind::Click => "click",
+                    VeloxTrayEventKind::DoubleClick => "double-click",
+                    VeloxTrayEventKind::Enter => "enter",
+                    VeloxTrayEventKind::Move => "move",
+                    VeloxTrayEventKind::Leave => "leave",
+                }),
+            );
+            if let Some((x, y)) = event.position {
+                payload.insert("position".into(), json!({"x": x, "y": y}));
+            }
+            if let Some(rect) = event.rect {
+                payload.insert(
+                    "rect".into(),
+                    json!({
+                        "x": rect.origin_x,
+                        "y": rect.origin_y,
+                        "width": rect.width,
+                        "height": rect.height,
+                    }),
+                );
+            }
+            if let Some(button) = &event.button {
+                payload.insert("button".into(), json!(button));
+            }
+            if let Some(state) = &event.button_state {
+                payload.insert("button_state".into(), json!(state));
+            }
+            serde_json::Value::Object(payload)
+        }
         Event::DeviceEvent {
             device_id, event, ..
         } => json!({

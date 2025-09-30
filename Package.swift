@@ -33,15 +33,17 @@ let package = Package(
       dependencies: ["VeloxRuntime", "VeloxRuntimeWryFFI"],
       path: "Sources/VeloxRuntimeWry",
       linkerSettings: [
-        .unsafeFlags(["-L", "runtime-wry-ffi/target/debug"], .when(configuration: .debug)),
-        .unsafeFlags(["-L", "runtime-wry-ffi/target/release"], .when(configuration: .release)),
         .unsafeFlags([
           "-L",
           ".build/plugins/outputs/velox/VeloxRuntimeWryFFI/destination/VeloxRustBuildPlugin/Artifacts/cargo-target/debug",
+          "-L",
+          "runtime-wry-ffi/target/debug",
         ], .when(configuration: .debug)),
         .unsafeFlags([
           "-L",
           ".build/plugins/outputs/velox/VeloxRuntimeWryFFI/destination/VeloxRustBuildPlugin/Artifacts/cargo-target/release",
+          "-L",
+          "runtime-wry-ffi/target/release",
         ], .when(configuration: .release)),
         .linkedLibrary("velox_runtime_wry_ffi")
       ]

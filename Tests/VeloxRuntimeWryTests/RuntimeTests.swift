@@ -1,26 +1,32 @@
 import XCTest
 import VeloxRuntime
-#if canImport(AppKit)
-import AppKit
-#endif
 @testable import VeloxRuntimeWry
 
-final class RuntimeTests: XCTestCase {
-  func testRuntimeIterationProducesEvents() throws {
-    guard let runtime = VeloxRuntimeWry.Runtime() else {
-      throw XCTSkip("Runtime not available in the current environment")
-    }
+private enum RuntimeHolder {
+  static var runtime: VeloxRuntimeWry.MockRuntime?
 
-#if canImport(AppKit)
-    if ProcessInfo.processInfo.environment["VELOX_ENABLE_UI_TESTS"] != "1" {
-      throw XCTSkip("UI integration tests disabled")
+  static func shared() throws -> VeloxRuntimeWry.MockRuntime {
+    if let runtime {
+      return runtime
     }
-    if NSApp == nil {
-      throw XCTSkip("AppKit application is not running")
-    }
-#else
-    throw XCTSkip("UI integration tests unavailable on this platform")
-#endif
+    let created = VeloxRuntimeWry.MockRuntime()
+    runtime = created
+    return created
+  }
+
+  static func reset() {
+    runtime = nil
+  }
+}
+
+final class RuntimeTests: XCTestCase {
+  override class func tearDown() {
+    RuntimeHolder.reset()
+    super.tearDown()
+  }
+
+  func testRuntimeIterationProducesEvents() throws {
+    let runtime = try RuntimeHolder.shared()
 
     final class EventAccumulator: @unchecked Sendable {
       var events: [VeloxRunEvent<VeloxRuntimeWry.Event>] = []
@@ -42,62 +48,36 @@ final class RuntimeTests: XCTestCase {
   }
 
   func testRuntimeCreatesWindowAndWebview() throws {
-    guard let runtime = VeloxRuntimeWry.Runtime() else {
-      throw XCTSkip("Runtime not available in the current environment")
-    }
+    let runtime = try RuntimeHolder.shared()
 
-#if canImport(AppKit)
-    if ProcessInfo.processInfo.environment["VELOX_ENABLE_UI_TESTS"] != "1" {
-      throw XCTSkip("UI integration tests disabled")
-    }
-    if NSApp == nil {
-      throw XCTSkip("AppKit application is not running")
-    }
-#else
-    throw XCTSkip("UI integration tests unavailable on this platform")
-#endif
-
-    guard let detached = try? runtime.createWindow(
+    let detachedWindow = try runtime.createWindow(
       configuration: .init(width: 320, height: 240, title: "Runtime Window")
-    ) else {
-      throw XCTSkip("Window creation not supported in this environment")
-    }
+    )
 
-    let window = detached.dispatcher
-
+    let window = detachedWindow.dispatcher
     XCTAssertTrue(window.setTitle("Runtime Window Updated"))
 
-    guard let webview = window.makeWebview(configuration: .init(url: "https://example.com")) else {
-      throw XCTSkip("Webview creation not supported in this environment")
-    }
+    let webview = try XCTUnwrap(
+      window.makeWebview(configuration: .init(url: "https://example.com")),
+      "Mock runtime should provide a webview dispatcher"
+    )
 
     XCTAssertTrue(webview.navigate(to: "https://example.com"))
   }
 
   func testRuntimeIndexesWindowsByLabel() throws {
-    guard let runtime = VeloxRuntimeWry.Runtime() else {
-      throw XCTSkip("Runtime not available in the current environment")
-    }
-
-#if canImport(AppKit)
-    if ProcessInfo.processInfo.environment["VELOX_ENABLE_UI_TESTS"] != "1" {
-      throw XCTSkip("UI integration tests disabled")
-    }
-    if NSApp == nil {
-      throw XCTSkip("AppKit application is not running")
-    }
-#else
-    throw XCTSkip("UI integration tests unavailable on this platform")
-#endif
+    let runtime = try RuntimeHolder.shared()
 
     let label = "TestWindow"
     let detached = try runtime.createWindow(
       configuration: .init(width: 200, height: 200, title: label),
       label: label
     )
+
     let identifier = try XCTUnwrap(runtime.windowIdentifier(forLabel: label))
     XCTAssertEqual(identifier, detached.id)
-    let retrieved = runtime.window(for: label)
+
+    let retrieved = try XCTUnwrap(runtime.window(for: label))
     XCTAssertTrue(retrieved === detached.dispatcher)
   }
 }

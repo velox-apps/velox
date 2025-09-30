@@ -53,4 +53,43 @@ final class EventDecodingTests: XCTestCase {
       .exitRequested(code: 42)
     )
   }
+
+  func testUserDefinedPayloadDecoding() {
+    let json = "{\"type\":\"user-event\",\"payload\":\"{\\\"action\\\":\\\"ping\\\",\\\"value\\\":42}\"}"
+    let event = VeloxRuntimeWry.Event(fromJSON: json)
+    let expected = VeloxRuntimeWry.UserDefinedPayload(rawValue: "{\"action\":\"ping\",\"value\":42}")
+    XCTAssertEqual(event, .userDefined(payload: expected))
+
+    struct Payload: Decodable, Equatable {
+      let action: String
+      let value: Int
+    }
+
+    if case .userDefined(let payload) = event {
+      XCTAssertEqual(payload.decode(Payload.self), Payload(action: "ping", value: 42))
+    } else {
+      XCTFail("Expected userDefined event")
+    }
+  }
+
+  func testMenuEventDecoding() {
+    let json = "{\"type\":\"menu-event\",\"menu_id\":\"file\"}"
+    XCTAssertEqual(VeloxRuntimeWry.Event(fromJSON: json), .menuEvent(menuId: "file"))
+  }
+
+  func testTrayEventDecoding() {
+    let json = "{\"type\":\"tray-event\",\"tray_id\":\"tray.1\",\"event_type\":\"click\",\"button\":\"left\",\"button_state\":\"down\",\"position\":{\"x\":12.0,\"y\":4.0},\"rect\":{\"x\":1.0,\"y\":2.0,\"width\":24.0,\"height\":16.0}}"
+    let expected = VeloxRuntimeWry.TrayEvent(
+      identifier: "tray.1",
+      type: .click,
+      button: "left",
+      buttonState: "down",
+      position: VeloxRuntimeWry.WindowPosition(x: 12, y: 4),
+      rect: VeloxRuntimeWry.TrayRect(
+        origin: VeloxRuntimeWry.WindowPosition(x: 1, y: 2),
+        size: VeloxRuntimeWry.WindowSize(width: 24, height: 16)
+      )
+    )
+    XCTAssertEqual(VeloxRuntimeWry.Event(fromJSON: json), .trayEvent(event: expected))
+  }
 }

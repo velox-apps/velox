@@ -28,6 +28,32 @@ typedef struct {
   char _unused;
 } VeloxWebviewHandle;
 
+typedef struct {
+  char _unused;
+} VeloxTrayHandle;
+
+typedef struct {
+  const char *identifier;
+  const char *title;
+  const char *tooltip;
+  bool visible;
+  bool show_menu_on_left_click;
+} VeloxTrayConfig;
+
+#if defined(__APPLE__)
+typedef struct {
+  char _unused;
+} VeloxMenuBarHandle;
+
+typedef struct {
+  char _unused;
+} VeloxSubmenuHandle;
+
+typedef struct {
+  char _unused;
+} VeloxMenuItemHandle;
+#endif
+
 typedef enum {
   VELOX_CONTROL_FLOW_POLL = 0,
   VELOX_CONTROL_FLOW_WAIT = 1,
@@ -72,6 +98,10 @@ void velox_event_loop_pump(
 
 VeloxEventLoopProxyHandle *velox_event_loop_create_proxy(VeloxEventLoopHandle *event_loop);
 bool velox_event_loop_proxy_request_exit(VeloxEventLoopProxyHandle *proxy);
+bool velox_event_loop_proxy_send_user_event(
+  VeloxEventLoopProxyHandle *proxy,
+  const char *payload
+);
 void velox_event_loop_proxy_free(VeloxEventLoopProxyHandle *proxy);
 
 VeloxWindowHandle *velox_window_build(VeloxEventLoopHandle *event_loop, const VeloxWindowConfig *config);
@@ -124,6 +154,53 @@ bool velox_webview_set_zoom(VeloxWebviewHandle *webview, double scale_factor);
 bool velox_webview_show(VeloxWebviewHandle *webview);
 bool velox_webview_hide(VeloxWebviewHandle *webview);
 bool velox_webview_clear_browsing_data(VeloxWebviewHandle *webview);
+
+VeloxTrayHandle *velox_tray_new(const VeloxTrayConfig *config);
+void velox_tray_free(VeloxTrayHandle *handle);
+const char *velox_tray_identifier(VeloxTrayHandle *handle);
+bool velox_tray_set_title(VeloxTrayHandle *handle, const char *title);
+bool velox_tray_set_tooltip(VeloxTrayHandle *handle, const char *tooltip);
+bool velox_tray_set_visible(VeloxTrayHandle *handle, bool visible);
+bool velox_tray_set_show_menu_on_left_click(VeloxTrayHandle *handle, bool enable);
+
+#if defined(__APPLE__)
+VeloxMenuBarHandle *velox_menu_bar_new(void);
+VeloxMenuBarHandle *velox_menu_bar_new_with_id(const char *identifier);
+void velox_menu_bar_free(VeloxMenuBarHandle *menu);
+const char *velox_menu_bar_identifier(VeloxMenuBarHandle *menu);
+bool velox_menu_bar_append_submenu(
+  VeloxMenuBarHandle *menu,
+  VeloxSubmenuHandle *submenu
+);
+bool velox_menu_bar_set_app_menu(VeloxMenuBarHandle *menu);
+
+VeloxSubmenuHandle *velox_submenu_new(const char *title, bool enabled);
+VeloxSubmenuHandle *velox_submenu_new_with_id(
+  const char *identifier,
+  const char *title,
+  bool enabled
+);
+void velox_submenu_free(VeloxSubmenuHandle *submenu);
+const char *velox_submenu_identifier(VeloxSubmenuHandle *submenu);
+bool velox_submenu_append_item(
+  VeloxSubmenuHandle *submenu,
+  VeloxMenuItemHandle *item
+);
+
+VeloxMenuItemHandle *velox_menu_item_new(
+  const char *identifier,
+  const char *title,
+  bool enabled,
+  const char *accelerator
+);
+void velox_menu_item_free(VeloxMenuItemHandle *item);
+bool velox_menu_item_set_enabled(VeloxMenuItemHandle *item, bool enabled);
+const char *velox_menu_item_identifier(VeloxMenuItemHandle *item);
+
+bool velox_tray_set_menu(VeloxTrayHandle *handle, VeloxMenuBarHandle *menu);
+
+void velox_app_state_force_launched(void);
+#endif
 
 #ifdef __cplusplus
 }

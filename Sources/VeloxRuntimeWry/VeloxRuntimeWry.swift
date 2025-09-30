@@ -287,6 +287,8 @@ public extension VeloxRuntimeWry {
         return .windowEvent(label: label)
       case let .raw(description):
         return .raw(description: description)
+      case .menuEvent:
+        return .userEvent(event)
       default:
         return .userEvent(event)
       }
@@ -307,6 +309,14 @@ public extension VeloxRuntimeWry {
     deinit {
       if let raw {
         velox_event_loop_free(raw)
+      }
+    }
+
+    /// Releases the underlying Tao event loop handle immediately. Further usage is undefined.
+    public func shutdown() {
+      if let raw {
+        velox_event_loop_free(raw)
+        self.raw = nil
       }
     }
 
@@ -402,6 +412,25 @@ public extension VeloxRuntimeWry {
     @discardableResult
     public func requestExit() -> Bool {
       velox_event_loop_proxy_request_exit(raw)
+    }
+
+    /// Sends a custom user event payload into the event loop.
+    @discardableResult
+    public func sendUserEvent(_ payload: String) -> Bool {
+      withOptionalCString(payload) { pointer in
+        velox_event_loop_proxy_send_user_event(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func sendUserEvent<T: Encodable>(
+      _ payload: T,
+      encoder: JSONEncoder = JSONEncoder()
+    ) -> Bool {
+      guard let encoded = try? VeloxRuntimeWry.UserDefinedPayload(encoding: payload, encoder: encoder) else {
+        return false
+      }
+      return sendUserEvent(encoded.rawValue)
     }
   }
 
@@ -656,6 +685,50 @@ public extension VeloxRuntimeWry {
     }
   }
 
+  struct TrayRect: Sendable, Equatable {
+    public var origin: WindowPosition
+    public var size: WindowSize
+
+    public init(origin: WindowPosition, size: WindowSize) {
+      self.origin = origin
+      self.size = size
+    }
+  }
+
+  struct TrayEvent: Sendable, Equatable {
+    public enum EventType: String, Sendable, Equatable {
+      case click
+      case doubleClick = "double-click"
+      case enter
+      case move
+      case leave
+      case unknown
+    }
+
+    public var identifier: String
+    public var type: EventType
+    public var button: String?
+    public var buttonState: String?
+    public var position: WindowPosition?
+    public var rect: TrayRect?
+
+    public init(
+      identifier: String,
+      type: EventType,
+      button: String?,
+      buttonState: String?,
+      position: WindowPosition?,
+      rect: TrayRect?
+    ) {
+      self.identifier = identifier
+      self.type = type
+      self.button = button
+      self.buttonState = buttonState
+      self.position = position
+      self.rect = rect
+    }
+  }
+
   struct KeyboardInput: Sendable, Equatable {
     public var state: String
     public var logicalKey: String
@@ -726,6 +799,29 @@ public extension VeloxRuntimeWry {
     }
   }
 
+  struct UserDefinedPayload: Sendable, Equatable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+      self.rawValue = rawValue
+    }
+
+    public init<T: Encodable>(encoding value: T, encoder: JSONEncoder = JSONEncoder()) throws {
+      let data = try encoder.encode(value)
+      guard let string = String(data: data, encoding: .utf8) else {
+        throw VeloxRuntimeError.failed(description: "Unable to encode user event payload as UTF-8")
+      }
+      self.rawValue = string
+    }
+
+    public func decode<T: Decodable>(_ type: T.Type, decoder: JSONDecoder = JSONDecoder()) -> T? {
+      guard let data = rawValue.data(using: .utf8) else {
+        return nil
+      }
+      return try? decoder.decode(T.self, from: data)
+    }
+  }
+
   enum Event: Sendable, Equatable {
     case ready
     case newEvents(cause: String)
@@ -761,6 +857,9 @@ public extension VeloxRuntimeWry {
     case windowHoveredFileCancelled(windowId: String)
     case windowThemeChanged(windowId: String, theme: String)
     case windowEvent(windowId: String, description: String)
+    case userDefined(payload: UserDefinedPayload)
+    case menuEvent(menuId: String)
+    case trayEvent(event: TrayEvent)
     case raw(description: String)
     case unknown(json: String)
 
@@ -1000,8 +1099,33 @@ public extension VeloxRuntimeWry {
         if VeloxEventDecoder.string(object["event"])?.lowercased() == "exit" {
           self = .userExit
         } else {
+          let payload = VeloxEventDecoder.string(object["payload"]) ?? ""
+          self = .userDefined(payload: UserDefinedPayload(rawValue: payload))
+        }
+      case "menu-event":
+        if let menuId = VeloxEventDecoder.string(object["menu_id"]) {
+          self = .menuEvent(menuId: menuId)
+        } else {
           self = .unknown(json: json)
         }
+      case "tray-event":
+        let identifier = VeloxEventDecoder.string(object["tray_id"]) ?? ""
+        let eventTypeString = VeloxEventDecoder.string(object["event_type"]) ?? "unknown"
+        let eventType = TrayEvent.EventType(rawValue: eventTypeString) ?? .unknown
+        let position = Event.decodePosition(VeloxEventDecoder.dictionary(object["position"]))
+        let rect = Event.decodeTrayRect(VeloxEventDecoder.dictionary(object["rect"]))
+        let button = VeloxEventDecoder.string(object["button"])
+        let buttonState = VeloxEventDecoder.string(object["button_state"])
+        self = .trayEvent(
+          event: TrayEvent(
+            identifier: identifier,
+            type: eventType,
+            button: button,
+            buttonState: buttonState,
+            position: position,
+            rect: rect
+          )
+        )
       case "raw":
         let description = VeloxEventDecoder.string(object["debug"]) ?? json
         self = .raw(description: description)
@@ -1010,27 +1134,43 @@ public extension VeloxRuntimeWry {
       }
     }
 
-    private static func decodeSize(_ dictionary: [String: Any]?) -> WindowSize? {
-      guard let dictionary else { return nil }
-      guard
-        let width = VeloxEventDecoder.double(dictionary["width"]),
-        let height = VeloxEventDecoder.double(dictionary["height"])
+  private static func decodeSize(_ dictionary: [String: Any]?) -> WindowSize? {
+    guard let dictionary else { return nil }
+    guard
+      let width = VeloxEventDecoder.double(dictionary["width"]),
+      let height = VeloxEventDecoder.double(dictionary["height"])
       else {
         return nil
       }
       return WindowSize(width: width, height: height)
     }
 
-    private static func decodePosition(_ dictionary: [String: Any]?) -> WindowPosition? {
-      guard let dictionary else { return nil }
-      guard
-        let x = VeloxEventDecoder.double(dictionary["x"]),
-        let y = VeloxEventDecoder.double(dictionary["y"])
-      else {
-        return nil
-      }
-      return WindowPosition(x: x, y: y)
+  private static func decodePosition(_ dictionary: [String: Any]?) -> WindowPosition? {
+    guard let dictionary else { return nil }
+    guard
+      let x = VeloxEventDecoder.double(dictionary["x"]),
+      let y = VeloxEventDecoder.double(dictionary["y"])
+    else {
+      return nil
     }
+    return WindowPosition(x: x, y: y)
+  }
+
+  private static func decodeTrayRect(_ dictionary: [String: Any]?) -> TrayRect? {
+    guard
+      let dictionary,
+      let x = VeloxEventDecoder.double(dictionary["x"]),
+      let y = VeloxEventDecoder.double(dictionary["y"]),
+      let width = VeloxEventDecoder.double(dictionary["width"]),
+      let height = VeloxEventDecoder.double(dictionary["height"])
+    else {
+      return nil
+    }
+    return TrayRect(
+      origin: WindowPosition(x: x, y: y),
+      size: WindowSize(width: width, height: height)
+    )
+  }
   }
 }
 
@@ -1119,11 +1259,260 @@ public final class EventLoopProxyAdapter: VeloxEventLoopProxy {
       guard proxy.requestExit() else {
         throw VeloxRuntimeError.failed(description: "failed to signal event loop")
       }
+    case .userDefined(let payload):
+      guard proxy.sendUserEvent(payload.rawValue) else {
+        throw VeloxRuntimeError.failed(description: "failed to send user event")
+      }
     default:
       throw VeloxRuntimeError.unsupported
     }
   }
+
+  public func sendUserEvent<T: Encodable>(
+    _ payload: T,
+    encoder: JSONEncoder = JSONEncoder()
+  ) throws {
+    let encoded = try VeloxRuntimeWry.UserDefinedPayload(encoding: payload, encoder: encoder)
+    try send(event: .userDefined(payload: encoded))
+  }
 }
+
+#if os(macOS)
+public extension VeloxRuntimeWry {
+  final class MenuBar: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxMenuBarHandle>
+    private var retainedSubmenus: [Submenu] = []
+
+    public let identifier: String
+
+    public init?(identifier: String? = nil) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let handle: UnsafeMutablePointer<VeloxMenuBarHandle>? = withOptionalCString(identifier ?? "") { idPointer in
+        if let idPointer {
+          velox_menu_bar_new_with_id(idPointer)
+        } else {
+          velox_menu_bar_new()
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_menu_bar_identifier(handle))
+    }
+
+    deinit {
+      velox_menu_bar_free(raw)
+    }
+
+    @discardableResult
+    public func append(_ submenu: Submenu) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      guard velox_menu_bar_append_submenu(raw, submenu.raw) else {
+        return false
+      }
+      retainedSubmenus.append(submenu)
+      return true
+    }
+
+    @discardableResult
+    public func setAsApplicationMenu() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_menu_bar_set_app_menu(raw)
+    }
+  }
+
+  final class Submenu: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxSubmenuHandle>
+    private var retainedItems: [MenuItem] = []
+
+    public let identifier: String
+
+    public init?(title: String, identifier: String? = nil, isEnabled: Bool = true) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let handle: UnsafeMutablePointer<VeloxSubmenuHandle>? = title.withCString { titlePointer in
+        withOptionalCString(identifier ?? "") { idPointer in
+          if let idPointer {
+            velox_submenu_new_with_id(idPointer, titlePointer, isEnabled)
+          } else {
+            velox_submenu_new(titlePointer, isEnabled)
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_submenu_identifier(handle))
+    }
+
+    deinit {
+      velox_submenu_free(raw)
+    }
+
+    @discardableResult
+    public func append(_ item: MenuItem) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      guard velox_submenu_append_item(raw, item.raw) else {
+        return false
+      }
+      retainedItems.append(item)
+      return true
+    }
+  }
+
+  final class MenuItem: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxMenuItemHandle>
+    public let identifier: String
+
+    public init?(
+      identifier: String? = nil,
+      title: String,
+      isEnabled: Bool = true,
+      accelerator: String? = nil
+    ) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let handle: UnsafeMutablePointer<VeloxMenuItemHandle>? = title.withCString { titlePointer in
+        withOptionalCString(identifier ?? "") { idPointer in
+          withOptionalCString(accelerator ?? "") { acceleratorPointer in
+            velox_menu_item_new(idPointer, titlePointer, isEnabled, acceleratorPointer)
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_menu_item_identifier(handle))
+    }
+
+    deinit {
+      velox_menu_item_free(raw)
+    }
+
+    @discardableResult
+    public func setEnabled(_ isEnabled: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_menu_item_set_enabled(raw, isEnabled)
+    }
+  }
+
+  final class TrayIcon: @unchecked Sendable {
+    private let raw: UnsafeMutablePointer<VeloxTrayHandle>
+
+    public let identifier: String
+
+    public init?(
+      identifier: String? = nil,
+      title: String? = nil,
+      tooltip: String? = nil,
+      visible: Bool = true,
+      showMenuOnLeftClick: Bool = true
+    ) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      var config = VeloxTrayConfig(
+        identifier: nil,
+        title: nil,
+        tooltip: nil,
+        visible: visible,
+        show_menu_on_left_click: showMenuOnLeftClick
+      )
+
+      let handle: UnsafeMutablePointer<VeloxTrayHandle>? = withOptionalCString(identifier ?? "") { identifierPointer in
+        config.identifier = identifierPointer
+        return withOptionalCString(title ?? "") { titlePointer in
+          config.title = titlePointer
+          return withOptionalCString(tooltip ?? "") { tooltipPointer in
+            config.tooltip = tooltipPointer
+            return velox_tray_new(&config)
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_tray_identifier(handle))
+    }
+
+    deinit {
+      velox_tray_free(raw)
+    }
+
+    @discardableResult
+    public func setTitle(_ title: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return withOptionalCString(title ?? "") { pointer in
+        velox_tray_set_title(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func setTooltip(_ tooltip: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return withOptionalCString(tooltip ?? "") { pointer in
+        velox_tray_set_tooltip(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func setVisible(_ visible: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_tray_set_visible(raw, visible)
+    }
+
+    @discardableResult
+    public func setShowMenuOnLeftClick(_ enable: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_tray_set_show_menu_on_left_click(raw, enable)
+    }
+
+    @discardableResult
+    public func setMenu(_ menu: MenuBar?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_tray_set_menu(raw, menu?.raw)
+    }
+  }
+}
+#endif
 
 private func string(from pointer: UnsafePointer<CChar>?) -> String {
   guard let pointer else {
