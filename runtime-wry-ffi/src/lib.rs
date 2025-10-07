@@ -2,9 +2,10 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
-use std::sync::OnceLock;
 #[cfg(target_os = "macos")]
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
+use std::sync::OnceLock;
+use std::{cell::RefCell, thread::LocalKey};
 
 #[cfg(target_os = "macos")]
 use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -21,18 +22,28 @@ use tao::{
     },
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
     keyboard::ModifiersState,
+    monitor::MonitorHandle,
     platform::run_return::EventLoopExtRunReturn,
     window::{
-        Fullscreen, ResizeDirection as TaoResizeDirection,
+        Fullscreen, ResizeDirection as TaoResizeDirection, Theme,
         UserAttentionType as TaoUserAttentionType, Window, WindowBuilder as TaoWindowBuilder,
     },
 };
+
+#[cfg(target_os = "macos")]
+use tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS};
 use url::Url;
 use wry::{WebView, WebViewBuilder};
 
 static LIBRARY_NAME: OnceLock<CString> = OnceLock::new();
 static RUNTIME_VERSION: OnceLock<CString> = OnceLock::new();
 static WEBVIEW_VERSION: OnceLock<CString> = OnceLock::new();
+
+thread_local! {
+    static TITLE_BUFFER: RefCell<CString> = RefCell::new(CString::new("").expect("empty string"));
+    static MONITOR_BUFFER: RefCell<CString> = RefCell::new(CString::new("").expect("empty string"));
+    static MONITOR_LIST_BUFFER: RefCell<CString> = RefCell::new(CString::new("").expect("empty string"));
+}
 
 #[derive(Debug, Clone)]
 enum VeloxUserEvent {
@@ -59,6 +70,45 @@ pub struct VeloxWindowHandle {
 
 pub struct VeloxWebviewHandle {
     webview: WebView,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct VeloxColor {
+    red: u8,
+    green: u8,
+    blue: u8,
+    alpha: u8,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct VeloxPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct VeloxSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VeloxWindowTheme {
+    Unspecified = 0,
+    Light = 1,
+    Dark = 2,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VeloxActivationPolicy {
+    Regular = 0,
+    Accessory = 1,
+    Prohibited = 2,
 }
 
 #[cfg(target_os = "macos")]
@@ -313,6 +363,74 @@ fn opt_cstring(ptr: *const c_char) -> Option<String> {
     }
 }
 
+fn opt_color(color: *const VeloxColor) -> Option<(u8, u8, u8, u8)> {
+    if color.is_null() {
+        None
+    } else {
+        let color = unsafe { &*color };
+        Some((color.red, color.green, color.blue, color.alpha))
+    }
+}
+
+fn theme_from_ffi(theme: VeloxWindowTheme) -> Option<Theme> {
+    match theme {
+        VeloxWindowTheme::Unspecified => None,
+        VeloxWindowTheme::Light => Some(Theme::Light),
+        VeloxWindowTheme::Dark => Some(Theme::Dark),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn activation_policy_from_ffi(policy: VeloxActivationPolicy) -> ActivationPolicy {
+    match policy {
+        VeloxActivationPolicy::Regular => ActivationPolicy::Regular,
+        VeloxActivationPolicy::Accessory => ActivationPolicy::Accessory,
+        VeloxActivationPolicy::Prohibited => ActivationPolicy::Prohibited,
+    }
+}
+
+fn monitor_to_json(monitor: &MonitorHandle) -> serde_json::Value {
+    let name = monitor.name().unwrap_or_default();
+    let position = monitor.position();
+    let size = monitor.size();
+    json!({
+        "name": name,
+        "scale_factor": monitor.scale_factor(),
+        "position": {
+            "x": position.x,
+            "y": position.y,
+        },
+        "size": {
+            "width": size.width,
+            "height": size.height,
+        }
+    })
+}
+
+fn write_json_to_buffer(
+    buffer: &'static LocalKey<RefCell<CString>>,
+    value: serde_json::Value,
+) -> *const c_char {
+    let json_string = value.to_string();
+    buffer.with(|cell| {
+        let mut storage = cell.borrow_mut();
+        *storage =
+            CString::new(json_string).unwrap_or_else(|_| CString::new("{}").expect("static JSON"));
+        storage.as_ptr()
+    })
+}
+
+fn write_string_to_buffer(
+    buffer: &'static LocalKey<RefCell<CString>>,
+    value: String,
+) -> *const c_char {
+    buffer.with(|cell| {
+        let mut storage = cell.borrow_mut();
+        *storage = CString::new(value).unwrap_or_else(|_| CString::new("").expect("empty string"));
+        storage.as_ptr()
+    })
+}
+
 #[cfg(target_os = "macos")]
 fn guard_panic<T>(f: impl FnOnce() -> *mut T) -> *mut T {
     match catch_unwind(AssertUnwindSafe(f)) {
@@ -452,6 +570,94 @@ pub extern "C" fn velox_event_loop_proxy_send_user_event(
 pub extern "C" fn velox_event_loop_proxy_free(proxy: *mut VeloxEventLoopProxyHandle) {
     if !proxy.is_null() {
         unsafe { drop(Box::from_raw(proxy)) };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_event_loop_set_activation_policy(
+    event_loop: *mut VeloxEventLoop,
+    policy: VeloxActivationPolicy,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if event_loop.is_null() {
+            return false;
+        }
+
+        let event_loop = unsafe { &mut *event_loop };
+        event_loop
+            .event_loop
+            .set_activation_policy_at_runtime(activation_policy_from_ffi(policy));
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (event_loop, policy);
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_event_loop_set_dock_visibility(
+    event_loop: *mut VeloxEventLoop,
+    visible: bool,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if event_loop.is_null() {
+            return false;
+        }
+
+        let event_loop = unsafe { &mut *event_loop };
+        event_loop.event_loop.set_dock_visibility(visible);
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (event_loop, visible);
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_event_loop_hide_application(event_loop: *mut VeloxEventLoop) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if event_loop.is_null() {
+            return false;
+        }
+
+        let event_loop = unsafe { &mut *event_loop };
+        event_loop.event_loop.hide_application();
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = event_loop;
+        false
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_event_loop_show_application(event_loop: *mut VeloxEventLoop) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if event_loop.is_null() {
+            return false;
+        }
+
+        let event_loop = unsafe { &mut *event_loop };
+        event_loop.event_loop.show_application();
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = event_loop;
+        false
     }
 }
 
@@ -1075,6 +1281,373 @@ pub extern "C" fn velox_window_set_always_on_top(
 pub extern "C" fn velox_window_set_visible(window: *mut VeloxWindowHandle, visible: bool) -> bool {
     with_window(window, |w| {
         let _ = w.set_visible(visible);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_maximized(
+    window: *mut VeloxWindowHandle,
+    maximized: bool,
+) -> bool {
+    with_window(window, |w| {
+        w.set_maximized(maximized);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_minimized(
+    window: *mut VeloxWindowHandle,
+    minimized: bool,
+) -> bool {
+    with_window(window, |w| {
+        w.set_minimized(minimized);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_skip_taskbar(
+    window: *mut VeloxWindowHandle,
+    skip: bool,
+) -> bool {
+    with_window(window, |w| {
+        #[cfg(target_os = "windows")]
+        {
+            use tao::platform::windows::WindowExtWindows;
+            return w.set_skip_taskbar(skip).is_ok();
+        }
+
+        #[cfg(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        ))]
+        {
+            use tao::platform::unix::WindowExtUnix;
+            return w.set_skip_taskbar(skip).is_ok();
+        }
+
+        #[cfg(not(any(
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        )))]
+        {
+            let _ = skip;
+            return false;
+        }
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_minimizable(
+    window: *mut VeloxWindowHandle,
+    minimizable: bool,
+) -> bool {
+    with_window(window, |w| {
+        w.set_minimizable(minimizable);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_maximizable(
+    window: *mut VeloxWindowHandle,
+    maximizable: bool,
+) -> bool {
+    with_window(window, |w| {
+        w.set_maximizable(maximizable);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_closable(
+    window: *mut VeloxWindowHandle,
+    closable: bool,
+) -> bool {
+    with_window(window, |w| {
+        w.set_closable(closable);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_background_color(
+    window: *mut VeloxWindowHandle,
+    color: *const VeloxColor,
+) -> bool {
+    let color = opt_color(color);
+    with_window(window, |w| {
+        w.set_background_color(color);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_maximized(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_maximized()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_minimized(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_minimized()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_visible(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_visible()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_resizable(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_resizable()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_decorated(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_decorated()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_always_on_top(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_always_on_top()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_minimizable(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_minimizable()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_maximizable(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_maximizable()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_closable(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_closable()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_scale_factor(
+    window: *mut VeloxWindowHandle,
+    scale_factor: *mut f64,
+) -> bool {
+    if scale_factor.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| {
+        unsafe {
+            *scale_factor = w.scale_factor();
+        }
+        true
+    })
+    .unwrap_or(false)
+}
+
+fn write_position(target: *mut VeloxPoint, position: LogicalPosition<f64>) {
+    unsafe {
+        (*target).x = position.x;
+        (*target).y = position.y;
+    }
+}
+
+fn write_size(target: *mut VeloxSize, size: LogicalSize<f64>) {
+    unsafe {
+        (*target).width = size.width;
+        (*target).height = size.height;
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_inner_position(
+    window: *mut VeloxWindowHandle,
+    position: *mut VeloxPoint,
+) -> bool {
+    if position.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| match w.inner_position() {
+        Ok(pos) => {
+            write_position(position, pos.to_logical(w.scale_factor()));
+            true
+        }
+        Err(_) => false,
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_outer_position(
+    window: *mut VeloxWindowHandle,
+    position: *mut VeloxPoint,
+) -> bool {
+    if position.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| match w.outer_position() {
+        Ok(pos) => {
+            write_position(position, pos.to_logical(w.scale_factor()));
+            true
+        }
+        Err(_) => false,
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_inner_size(
+    window: *mut VeloxWindowHandle,
+    size: *mut VeloxSize,
+) -> bool {
+    if size.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| {
+        let inner = w.inner_size().to_logical::<f64>(w.scale_factor());
+        write_size(size, inner);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_outer_size(
+    window: *mut VeloxWindowHandle,
+    size: *mut VeloxSize,
+) -> bool {
+    if size.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| {
+        let outer = w.outer_size().to_logical::<f64>(w.scale_factor());
+        write_size(size, outer);
+        true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_title(window: *mut VeloxWindowHandle) -> *const c_char {
+    with_window(window, |w| {
+        let title = w.title();
+        write_string_to_buffer(&TITLE_BUFFER, title)
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_fullscreen(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.fullscreen().is_some()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_is_focused(window: *mut VeloxWindowHandle) -> bool {
+    with_window(window, |w| w.is_focused()).unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_cursor_position(
+    window: *mut VeloxWindowHandle,
+    point: *mut VeloxPoint,
+) -> bool {
+    if point.is_null() {
+        return false;
+    }
+
+    with_window(window, |w| match w.cursor_position() {
+        Ok(position) => {
+            unsafe {
+                (*point).x = position.x;
+                (*point).y = position.y;
+            }
+            true
+        }
+        Err(_) => false,
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_current_monitor(window: *mut VeloxWindowHandle) -> *const c_char {
+    with_window(window, |w| {
+        if let Some(monitor) = w.current_monitor() {
+            write_json_to_buffer(&MONITOR_BUFFER, monitor_to_json(&monitor))
+        } else {
+            ptr::null()
+        }
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_primary_monitor(window: *mut VeloxWindowHandle) -> *const c_char {
+    with_window(window, |w| {
+        if let Some(monitor) = w.primary_monitor() {
+            write_json_to_buffer(&MONITOR_BUFFER, monitor_to_json(&monitor))
+        } else {
+            ptr::null()
+        }
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_available_monitors(window: *mut VeloxWindowHandle) -> *const c_char {
+    with_window(window, |w| {
+        let monitors: Vec<_> = w
+            .available_monitors()
+            .map(|monitor| monitor_to_json(&monitor))
+            .collect();
+        write_json_to_buffer(&MONITOR_LIST_BUFFER, serde_json::Value::Array(monitors))
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_monitor_from_point(
+    window: *mut VeloxWindowHandle,
+    point: VeloxPoint,
+) -> *const c_char {
+    with_window(window, |w| {
+        if let Some(monitor) = w.monitor_from_point(point.x, point.y) {
+            write_json_to_buffer(&MONITOR_BUFFER, monitor_to_json(&monitor))
+        } else {
+            ptr::null()
+        }
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_theme(
+    window: *mut VeloxWindowHandle,
+    theme: VeloxWindowTheme,
+) -> bool {
+    let theme = theme_from_ffi(theme);
+    with_window(window, |w| {
+        w.set_theme(theme);
         true
     })
     .unwrap_or(false)

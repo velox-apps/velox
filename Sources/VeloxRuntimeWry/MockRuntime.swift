@@ -24,8 +24,35 @@ extension VeloxRuntimeWry {
     private var readyDelivered = false
     private var pendingExitCode: Int32?
     private var windowIndex: UInt = 0
+    private var windowStreams: [UUID: VeloxEventStreamMultiplexer<VeloxRuntimeWry.WindowEvent>] = [:]
+    private var webviewStreams: [UUID: VeloxEventStreamMultiplexer<VeloxRuntimeWry.WebviewEvent>] = [:]
+    private let menuStream = VeloxEventStreamMultiplexer<VeloxRuntimeWry.MenuEvent>()
+    private let trayStream = VeloxEventStreamMultiplexer<VeloxRuntimeWry.TrayEventNotification>()
+    private var webviewOwners: [UUID: UUID] = [:]
+    private let monitors: [VeloxRuntimeWry.MonitorInfo] = [
+      VeloxRuntimeWry.MonitorInfo(
+        name: "MockDisplay",
+        position: VeloxRuntimeWry.WindowPosition(x: 0, y: 0),
+        size: VeloxRuntimeWry.WindowSize(width: 1920, height: 1080),
+        scaleFactor: 2.0
+      )
+    ]
 
     public init() {}
+
+    deinit {
+      let (windowSinks, webviewSinks): ([VeloxEventStreamMultiplexer<VeloxRuntimeWry.WindowEvent>], [VeloxEventStreamMultiplexer<VeloxRuntimeWry.WebviewEvent>]) = withLock {
+        let window = Array(windowStreams.values)
+        let webview = Array(webviewStreams.values)
+        windowStreams.removeAll()
+        webviewStreams.removeAll()
+        return (window, webview)
+      }
+      windowSinks.forEach { $0.finishAll() }
+      webviewSinks.forEach { $0.finishAll() }
+      menuStream.finishAll()
+      trayStream.finishAll()
+    }
 
     public static func make(args _: VeloxRuntimeInitArgs) throws -> MockRuntime {
       MockRuntime()
@@ -109,6 +136,36 @@ extension VeloxRuntimeWry {
       }
     }
 
+    public func menuEvents(
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.MenuEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<VeloxRuntimeWry.MenuEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token = menuStream.add(continuation)
+        continuation.onTermination = { [weak self] _ in
+          self?.menuStream.remove(token)
+        }
+      }
+    }
+
+    public func trayEvents(
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.TrayEventNotification>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<VeloxRuntimeWry.TrayEventNotification> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token = trayStream.add(continuation)
+        continuation.onTermination = { [weak self] _ in
+          self?.trayStream.remove(token)
+        }
+      }
+    }
+
+    fileprivate func currentMonitor() -> VeloxRuntimeWry.MonitorInfo? { monitors.first }
+
+    fileprivate func primaryMonitor() -> VeloxRuntimeWry.MonitorInfo? { monitors.first }
+
+    fileprivate func availableMonitors() -> [VeloxRuntimeWry.MonitorInfo] { monitors }
+
+    fileprivate func monitor(from _: VeloxRuntimeWry.WindowPosition) -> VeloxRuntimeWry.MonitorInfo? { monitors.first }
+
     fileprivate func attach(webview: Webview, to identifier: UUID) {
       withLock {
         guard var state = windows[identifier] else {
@@ -116,6 +173,7 @@ extension VeloxRuntimeWry {
         }
         state.webview = webview
         windows[identifier] = state
+        webviewOwners[webview.id] = identifier
       }
     }
 
@@ -134,11 +192,103 @@ extension VeloxRuntimeWry {
     }
 
     fileprivate func enqueueWindowEvent(label: String) {
+      let event = VeloxRuntimeWry.Event.windowEvent(windowId: label, description: "mock")
+      emitWindowEvent(label: label, event: event)
       enqueueRunEvent(VeloxRunEvent<Event>.windowEvent(label: label))
     }
 
     fileprivate func enqueueWebviewEvent(label: String) {
+      let event = VeloxRuntimeWry.Event.webviewEvent(label: label, description: "mock")
+      emitWebviewEvent(label: label, event: event)
       enqueueRunEvent(VeloxRunEvent<Event>.webviewEvent(label: label))
+    }
+
+    func emitWindowEvent(label: String, event: VeloxRuntimeWry.Event) {
+      guard let identifier = windowIdentifier(forLabel: label) else {
+        return
+      }
+      let sink = withLock { windowStreams[identifier] }
+      if let sink {
+        sink.yield(VeloxRuntimeWry.makeWindowEvent(label: label, event: event))
+      }
+    }
+
+    func emitWebviewEvent(label: String, event: VeloxRuntimeWry.Event) {
+      guard let identifier = windowIdentifier(forLabel: label) else {
+        return
+      }
+      let sink = withLock { webviewStreams[identifier] }
+      if let sink {
+        sink.yield(VeloxRuntimeWry.makeWebviewEvent(label: label, event: event))
+      }
+    }
+
+    func emitMenuEvent(identifier: String) {
+      menuStream.yield(.activated(identifier: identifier))
+    }
+
+    func emitTrayEvent(_ event: VeloxRuntimeWry.TrayEvent) {
+      trayStream.yield(VeloxRuntimeWry.TrayEventNotification(identifier: event.identifier, event: event))
+    }
+
+    fileprivate func windowEventStream(
+      for identifier: UUID,
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.WindowEvent>.Continuation.BufferingPolicy
+    ) -> AsyncStream<VeloxRuntimeWry.WindowEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token: UUID = withLock {
+          let sink = windowStreams[identifier] ?? VeloxEventStreamMultiplexer<VeloxRuntimeWry.WindowEvent>()
+          let token = sink.add(continuation)
+          windowStreams[identifier] = sink
+          return token
+        }
+
+        continuation.onTermination = { [weak self] _ in
+          guard let self else { return }
+          self.withLock {
+            if let sink = self.windowStreams[identifier] {
+              sink.remove(token)
+              if sink.isEmpty {
+                self.windowStreams.removeValue(forKey: identifier)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    fileprivate func webviewEventStream(
+      forWebview identifier: UUID,
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.WebviewEvent>.Continuation.BufferingPolicy
+    ) -> AsyncStream<VeloxRuntimeWry.WebviewEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        guard let windowIdentifier = withLock({ webviewOwners[identifier] }) else {
+          continuation.finish()
+          return
+        }
+
+        let token: UUID = withLock {
+          let sink = webviewStreams[windowIdentifier] ?? VeloxEventStreamMultiplexer<VeloxRuntimeWry.WebviewEvent>()
+          let token = sink.add(continuation)
+          webviewStreams[windowIdentifier] = sink
+          return token
+        }
+
+        continuation.onTermination = { [weak self] _ in
+          guard let self else { return }
+          self.withLock {
+            guard let windowIdentifier = self.webviewOwners[identifier],
+              let sink = self.webviewStreams[windowIdentifier]
+            else {
+              return
+            }
+            sink.remove(token)
+            if sink.isEmpty {
+              self.webviewStreams.removeValue(forKey: windowIdentifier)
+            }
+          }
+        }
+      }
     }
 
     private func registerWindow(
@@ -242,36 +392,44 @@ extension VeloxRuntimeWry.MockRuntime {
     public let id: UUID
     public let label: String
 
-    private var title: String
+    private var windowTitle: String
     private var size: (width: Double, height: Double)?
     private var position: (x: Double, y: Double)?
     private var minSize: (width: Double, height: Double)?
     private var maxSize: (width: Double, height: Double)?
-    private var isFullscreen = false
+    private var fullscreen = false
+    private var maximized = false
+    private var minimized = false
     private var decorations = true
     private var resizable = true
     private var alwaysOnTop = false
     private var alwaysOnBottom = false
     private var visibleOnAllWorkspaces = false
     private var contentProtected = false
-    private var isVisible = true
-    private var isFocused = false
+    private var visible = true
+    private var focused = false
     private var isFocusable = true
+    private var minimizable = true
+    private var maximizable = true
+    private var closable = true
     private var cursorGrab = false
     private var cursorVisible = true
-    private var cursorPosition: (x: Double, y: Double)?
+    private var cursorLocation: (x: Double, y: Double)?
     private var ignoreCursorEvents = false
+    private var skipTaskbar = false
+    private var backgroundColor: VeloxRuntimeWry.Window.Color?
+    private var theme: VeloxRuntimeWry.Window.Theme?
 
     fileprivate init(id: UUID, label: String, runtime: VeloxRuntimeWry.MockRuntime) {
       self.id = id
       self.label = label
       self.runtime = runtime
-      self.title = label
+      self.windowTitle = label
     }
 
     fileprivate func apply(configuration: VeloxRuntimeWry.WindowConfiguration) {
       size = (Double(configuration.width), Double(configuration.height))
-      title = configuration.title
+      windowTitle = configuration.title
     }
 
     public func makeWebview(configuration _: VeloxRuntimeWry.WebviewConfiguration? = nil) -> Webview? {
@@ -282,13 +440,31 @@ extension VeloxRuntimeWry.MockRuntime {
 
     @discardableResult
     public func setTitle(_ title: String) -> Bool {
-      self.title = title
+      self.windowTitle = title
       return true
     }
 
     @discardableResult
-    public func setFullscreen(_ isFullscreen: Bool) -> Bool {
-      self.isFullscreen = isFullscreen
+    public func setFullscreen(_ fullscreen: Bool) -> Bool {
+      self.fullscreen = fullscreen
+      return true
+    }
+
+    @discardableResult
+    public func setMaximized(_ maximized: Bool) -> Bool {
+      self.maximized = maximized
+      if maximized {
+        self.minimized = false
+      }
+      return true
+    }
+
+    @discardableResult
+    public func setMinimized(_ minimized: Bool) -> Bool {
+      self.minimized = minimized
+      if minimized {
+        self.maximized = false
+      }
       return true
     }
 
@@ -301,6 +477,24 @@ extension VeloxRuntimeWry.MockRuntime {
     @discardableResult
     public func setResizable(_ resizable: Bool) -> Bool {
       self.resizable = resizable
+      return true
+    }
+
+    @discardableResult
+    public func setMinimizable(_ minimizable: Bool) -> Bool {
+      self.minimizable = minimizable
+      return true
+    }
+
+    @discardableResult
+    public func setMaximizable(_ maximizable: Bool) -> Bool {
+      self.maximizable = maximizable
+      return true
+    }
+
+    @discardableResult
+    public func setClosable(_ closable: Bool) -> Bool {
+      self.closable = closable
       return true
     }
 
@@ -330,13 +524,19 @@ extension VeloxRuntimeWry.MockRuntime {
 
     @discardableResult
     public func setVisible(_ visible: Bool) -> Bool {
-      isVisible = visible
+      self.visible = visible
+      return true
+    }
+
+    @discardableResult
+    public func setSkipTaskbar(_ skip: Bool) -> Bool {
+      skipTaskbar = skip
       return true
     }
 
     @discardableResult
     public func focus() -> Bool {
-      isFocused = true
+      focused = true
       return true
     }
 
@@ -410,7 +610,7 @@ extension VeloxRuntimeWry.MockRuntime {
 
     @discardableResult
     public func setCursorPosition(x: Double, y: Double) -> Bool {
-      cursorPosition = (x, y)
+      cursorLocation = (x, y)
       return true
     }
 
@@ -418,6 +618,91 @@ extension VeloxRuntimeWry.MockRuntime {
     public func setIgnoreCursorEvents(_ ignore: Bool) -> Bool {
       ignoreCursorEvents = ignore
       return true
+    }
+
+    @discardableResult
+    public func setBackgroundColor(_ color: VeloxRuntimeWry.Window.Color?) -> Bool {
+      backgroundColor = color
+      return true
+    }
+
+    @discardableResult
+    public func setTheme(_ theme: VeloxRuntimeWry.Window.Theme?) -> Bool {
+      self.theme = theme
+      return true
+    }
+
+    public func title() -> String { windowTitle }
+
+    public func isFullscreen() -> Bool { fullscreen }
+
+    public func isMaximized() -> Bool { maximized }
+
+    public func isMinimized() -> Bool { minimized }
+
+    public func isVisible() -> Bool { visible }
+
+    public func isResizable() -> Bool { resizable }
+
+    public func isDecorated() -> Bool { decorations }
+
+    public func isAlwaysOnTop() -> Bool { alwaysOnTop }
+
+    public func isMinimizable() -> Bool { minimizable }
+
+    public func isMaximizable() -> Bool { maximizable }
+
+    public func isClosable() -> Bool { closable }
+
+    public func currentMonitor() -> VeloxRuntimeWry.MonitorInfo? { runtime.currentMonitor() }
+
+    public func primaryMonitor() -> VeloxRuntimeWry.MonitorInfo? { runtime.primaryMonitor() }
+
+    public func availableMonitors() -> [VeloxRuntimeWry.MonitorInfo] { runtime.availableMonitors() }
+
+    public func monitor(at position: VeloxRuntimeWry.WindowPosition) -> VeloxRuntimeWry.MonitorInfo? {
+      runtime.monitor(from: position)
+    }
+
+    public func isFocused() -> Bool { focused }
+
+    public func scaleFactor() -> Double? {
+      runtime.currentMonitor()?.scaleFactor
+    }
+
+    public func innerPosition() -> VeloxRuntimeWry.WindowPosition? {
+      guard let position else {
+        return nil
+      }
+      return VeloxRuntimeWry.WindowPosition(x: position.x, y: position.y)
+    }
+
+    public func outerPosition() -> VeloxRuntimeWry.WindowPosition? {
+      innerPosition()
+    }
+
+    public func innerSize() -> VeloxRuntimeWry.WindowSize? {
+      guard let size else {
+        return nil
+      }
+      return VeloxRuntimeWry.WindowSize(width: size.width, height: size.height)
+    }
+
+    public func outerSize() -> VeloxRuntimeWry.WindowSize? {
+      innerSize()
+    }
+
+    public func cursorPosition() -> VeloxRuntimeWry.WindowPosition? {
+      guard let position = cursorLocation else {
+        return nil
+      }
+      return VeloxRuntimeWry.WindowPosition(x: position.x, y: position.y)
+    }
+
+    public func events(
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.WindowEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<VeloxRuntimeWry.WindowEvent> {
+      runtime.windowEventStream(for: id, bufferingPolicy: bufferingPolicy)
     }
   }
 }
@@ -475,6 +760,12 @@ extension VeloxRuntimeWry.MockRuntime {
 
     @discardableResult
     public func clearBrowsingData() -> Bool { true }
+
+    public func events(
+      bufferingPolicy: AsyncStream<VeloxRuntimeWry.WebviewEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<VeloxRuntimeWry.WebviewEvent> {
+      runtime.webviewEventStream(forWebview: id, bufferingPolicy: bufferingPolicy)
+    }
   }
 }
 

@@ -70,6 +70,29 @@ typedef struct {
   const char *url;
 } VeloxWebviewConfig;
 
+typedef struct {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+  uint8_t alpha;
+} VeloxColor;
+
+typedef struct {
+  double x;
+  double y;
+} VeloxPoint;
+
+typedef struct {
+  double width;
+  double height;
+} VeloxSize;
+
+typedef enum {
+  VELOX_WINDOW_THEME_UNSPECIFIED = 0,
+  VELOX_WINDOW_THEME_LIGHT = 1,
+  VELOX_WINDOW_THEME_DARK = 2,
+} VeloxWindowTheme;
+
 typedef enum {
   VELOX_USER_ATTENTION_TYPE_INFORMATIONAL = 0,
   VELOX_USER_ATTENTION_TYPE_CRITICAL = 1,
@@ -119,6 +142,36 @@ bool velox_window_set_visible_on_all_workspaces(
 );
 bool velox_window_set_content_protected(VeloxWindowHandle *window, bool protected_content);
 bool velox_window_set_visible(VeloxWindowHandle *window, bool visible);
+bool velox_window_set_maximized(VeloxWindowHandle *window, bool maximized);
+bool velox_window_set_minimized(VeloxWindowHandle *window, bool minimized);
+bool velox_window_set_minimizable(VeloxWindowHandle *window, bool minimizable);
+bool velox_window_set_maximizable(VeloxWindowHandle *window, bool maximizable);
+bool velox_window_set_closable(VeloxWindowHandle *window, bool closable);
+bool velox_window_set_skip_taskbar(VeloxWindowHandle *window, bool skip);
+bool velox_window_set_background_color(VeloxWindowHandle *window, const VeloxColor *color);
+bool velox_window_set_theme(VeloxWindowHandle *window, VeloxWindowTheme theme);
+const char *velox_window_title(VeloxWindowHandle *window);
+bool velox_window_is_fullscreen(VeloxWindowHandle *window);
+bool velox_window_is_focused(VeloxWindowHandle *window);
+bool velox_window_is_maximized(VeloxWindowHandle *window);
+bool velox_window_is_minimized(VeloxWindowHandle *window);
+bool velox_window_is_visible(VeloxWindowHandle *window);
+bool velox_window_is_resizable(VeloxWindowHandle *window);
+bool velox_window_is_decorated(VeloxWindowHandle *window);
+bool velox_window_is_always_on_top(VeloxWindowHandle *window);
+bool velox_window_is_minimizable(VeloxWindowHandle *window);
+bool velox_window_is_maximizable(VeloxWindowHandle *window);
+bool velox_window_is_closable(VeloxWindowHandle *window);
+bool velox_window_scale_factor(VeloxWindowHandle *window, double *scale_factor);
+bool velox_window_inner_position(VeloxWindowHandle *window, VeloxPoint *position);
+bool velox_window_outer_position(VeloxWindowHandle *window, VeloxPoint *position);
+bool velox_window_inner_size(VeloxWindowHandle *window, VeloxSize *size);
+bool velox_window_outer_size(VeloxWindowHandle *window, VeloxSize *size);
+const char *velox_window_current_monitor(VeloxWindowHandle *window);
+const char *velox_window_primary_monitor(VeloxWindowHandle *window);
+const char *velox_window_available_monitors(VeloxWindowHandle *window);
+const char *velox_window_monitor_from_point(VeloxWindowHandle *window, VeloxPoint point);
+bool velox_window_cursor_position(VeloxWindowHandle *window, VeloxPoint *position);
 bool velox_window_request_redraw(VeloxWindowHandle *window);
 bool velox_window_set_size(VeloxWindowHandle *window, double width, double height);
 bool velox_window_set_position(VeloxWindowHandle *window, double x, double y);
@@ -164,6 +217,17 @@ bool velox_tray_set_visible(VeloxTrayHandle *handle, bool visible);
 bool velox_tray_set_show_menu_on_left_click(VeloxTrayHandle *handle, bool enable);
 
 #if defined(__APPLE__)
+typedef enum {
+  VELOX_ACTIVATION_POLICY_REGULAR = 0,
+  VELOX_ACTIVATION_POLICY_ACCESSORY = 1,
+  VELOX_ACTIVATION_POLICY_PROHIBITED = 2,
+} VeloxActivationPolicy;
+
+bool velox_event_loop_set_activation_policy(VeloxEventLoopHandle *event_loop, VeloxActivationPolicy policy);
+bool velox_event_loop_set_dock_visibility(VeloxEventLoopHandle *event_loop, bool visible);
+bool velox_event_loop_hide_application(VeloxEventLoopHandle *event_loop);
+bool velox_event_loop_show_application(VeloxEventLoopHandle *event_loop);
+
 VeloxMenuBarHandle *velox_menu_bar_new(void);
 VeloxMenuBarHandle *velox_menu_bar_new_with_id(const char *identifier);
 void velox_menu_bar_free(VeloxMenuBarHandle *menu);

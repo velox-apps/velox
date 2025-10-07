@@ -2,6 +2,51 @@ import Foundation
 import VeloxRuntime
 import VeloxRuntimeWryFFI
 
+final class VeloxEventStreamMultiplexer<Value> {
+  private var continuations: [UUID: AsyncStream<Value>.Continuation] = [:]
+  private let lock = NSLock()
+
+  func add(_ continuation: AsyncStream<Value>.Continuation) -> UUID {
+    let token = UUID()
+    lock.lock()
+    continuations[token] = continuation
+    lock.unlock()
+    return token
+  }
+
+  func remove(_ token: UUID) {
+    lock.lock()
+    continuations.removeValue(forKey: token)
+    lock.unlock()
+  }
+
+  func yield(_ value: Value) {
+    lock.lock()
+    let snapshots = Array(continuations.values)
+    lock.unlock()
+    for continuation in snapshots {
+      continuation.yield(value)
+    }
+  }
+
+  func finishAll() {
+    lock.lock()
+    let snapshots = Array(continuations.values)
+    continuations.removeAll()
+    lock.unlock()
+    for continuation in snapshots {
+      continuation.finish()
+    }
+  }
+
+  var isEmpty: Bool {
+    lock.lock()
+    let empty = continuations.isEmpty
+    lock.unlock()
+    return empty
+  }
+}
+
 /// Convenience wrapper around the Rust FFI exported by `velox-runtime-wry-ffi`.
 /// This provides a Swift-first surface that mirrors the original Tauri `wry`
 /// runtime API naming while renaming public symbols to the Velox domain.
@@ -85,6 +130,10 @@ public extension VeloxRuntimeWry {
     private var windows: [ObjectIdentifier: WindowState] = [:]
     private var windowsByLabel: [String: ObjectIdentifier] = [:]
     private var windowsByTaoIdentifier: [String: ObjectIdentifier] = [:]
+    private var windowEventStreams: [ObjectIdentifier: VeloxEventStreamMultiplexer<WindowEvent>] = [:]
+    private var webviewEventStreams: [ObjectIdentifier: VeloxEventStreamMultiplexer<WebviewEvent>] = [:]
+    private let menuEventStream = VeloxEventStreamMultiplexer<MenuEvent>()
+    private let trayEventStream = VeloxEventStreamMultiplexer<TrayEventNotification>()
 
     public static func make(args _: VeloxRuntimeInitArgs) throws -> Runtime {
       guard Thread.isMainThread else {
@@ -153,6 +202,8 @@ public extension VeloxRuntimeWry {
       windows[identifier] = updated
       stateLock.unlock()
 
+      webview.register(owner: self, windowIdentifier: identifier)
+
       return webview
     }
 
@@ -160,6 +211,7 @@ public extension VeloxRuntimeWry {
       handler: @Sendable @escaping (VeloxRunEvent<Event>) -> VeloxControlFlow
     ) {
       eventLoop.pump { event in
+        self.route(event)
         let flow = handler(self.toRunEvent(from: event))
         switch flow {
         case .poll: return ControlFlow.poll
@@ -223,7 +275,30 @@ public extension VeloxRuntimeWry {
       windowsByLabel[label] = identifier
       windowsByTaoIdentifier[taoIdentifier] = identifier
       stateLock.unlock()
+      window.register(owner: self)
       return VeloxDetachedWindow(id: identifier, label: label, dispatcher: window, webview: webview)
+    }
+
+    public func menuEvents(
+      bufferingPolicy: AsyncStream<MenuEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<MenuEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token = self.menuEventStream.add(continuation)
+        continuation.onTermination = { [weak self] _ in
+          self?.menuEventStream.remove(token)
+        }
+      }
+    }
+
+    public func trayEvents(
+      bufferingPolicy: AsyncStream<TrayEventNotification>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<TrayEventNotification> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token = self.trayEventStream.add(continuation)
+        continuation.onTermination = { [weak self] _ in
+          self?.trayEventStream.remove(token)
+        }
+      }
     }
 
     private func makeDefaultLabel(for window: Window) -> String {
@@ -240,16 +315,166 @@ public extension VeloxRuntimeWry {
     }
 
     private func removeWindow(forWindowIdentifier identifier: String) -> String? {
+      var label: String?
+      var windowStream: VeloxEventStreamMultiplexer<WindowEvent>?
+      var webviewStream: VeloxEventStreamMultiplexer<WebviewEvent>?
+
       stateLock.lock()
-      defer { stateLock.unlock() }
-      guard let objectIdentifier = windowsByTaoIdentifier.removeValue(forKey: identifier) else {
-        return nil
+      if let objectIdentifier = windowsByTaoIdentifier.removeValue(forKey: identifier),
+        let state = windows.removeValue(forKey: objectIdentifier)
+      {
+        windowsByLabel.removeValue(forKey: state.label)
+        label = state.label
+        windowStream = windowEventStreams.removeValue(forKey: objectIdentifier)
+        webviewStream = webviewEventStreams.removeValue(forKey: objectIdentifier)
       }
-      guard let state = windows.removeValue(forKey: objectIdentifier) else {
-        return nil
+      stateLock.unlock()
+
+      windowStream?.finishAll()
+      webviewStream?.finishAll()
+
+      return label
+    }
+
+    fileprivate func windowEventStream(
+      for identifier: ObjectIdentifier,
+      bufferingPolicy: AsyncStream<WindowEvent>.Continuation.BufferingPolicy
+    ) -> AsyncStream<WindowEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token: UUID = {
+          stateLock.lock()
+          defer { stateLock.unlock() }
+          let sink = windowEventStreams[identifier] ?? VeloxEventStreamMultiplexer<WindowEvent>()
+          let token = sink.add(continuation)
+          windowEventStreams[identifier] = sink
+          return token
+        }()
+
+        continuation.onTermination = { [weak self] _ in
+          guard let self else { return }
+          self.stateLock.lock()
+          if let sink = self.windowEventStreams[identifier] {
+            sink.remove(token)
+            if sink.isEmpty {
+              self.windowEventStreams.removeValue(forKey: identifier)
+            }
+          }
+          self.stateLock.unlock()
+        }
       }
-      windowsByLabel.removeValue(forKey: state.label)
-      return state.label
+    }
+
+    fileprivate func webviewEventStream(
+      for identifier: ObjectIdentifier,
+      bufferingPolicy: AsyncStream<WebviewEvent>.Continuation.BufferingPolicy
+    ) -> AsyncStream<WebviewEvent> {
+      AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
+        let token: UUID = {
+          stateLock.lock()
+          defer { stateLock.unlock() }
+          let sink = webviewEventStreams[identifier] ?? VeloxEventStreamMultiplexer<WebviewEvent>()
+          let token = sink.add(continuation)
+          webviewEventStreams[identifier] = sink
+          return token
+        }()
+
+        continuation.onTermination = { [weak self] _ in
+          guard let self else { return }
+          self.stateLock.lock()
+          if let sink = self.webviewEventStreams[identifier] {
+            sink.remove(token)
+            if sink.isEmpty {
+              self.webviewEventStreams.removeValue(forKey: identifier)
+            }
+          }
+          self.stateLock.unlock()
+        }
+      }
+    }
+
+    private func route(_ event: Event) {
+      switch event {
+      case .windowCloseRequested(let windowId),
+        .windowDestroyed(let windowId),
+        .windowResized(let windowId, _),
+        .windowMoved(let windowId, _),
+        .windowFocused(let windowId, _),
+        .windowScaleFactorChanged(let windowId, _, _),
+        .windowKeyboardInput(let windowId, _),
+        .windowImeText(let windowId, _),
+        .windowModifiersChanged(let windowId, _),
+        .windowCursorMoved(let windowId, _),
+        .windowCursorEntered(let windowId, _),
+        .windowCursorLeft(let windowId, _),
+        .windowMouseInput(let windowId, _),
+        .windowMouseWheel(let windowId, _, _),
+        .windowDroppedFile(let windowId, _),
+        .windowHoveredFile(let windowId, _),
+        .windowHoveredFileCancelled(let windowId),
+        .windowThemeChanged(let windowId, _),
+        .windowEvent(let windowId, _),
+        .windowRedrawRequested(let windowId):
+        deliverWindowEvent(windowIdentifier: windowId, event: event)
+      case .webviewEvent(let label, _):
+        deliverWebviewEvent(label: label, event: event)
+      case .loopDestroyed, .exit, .userExit:
+        finishAllStreams()
+      case .menuEvent(let identifier):
+        menuEventStream.yield(.activated(identifier: identifier))
+      case .trayEvent(let trayEvent):
+        trayEventStream.yield(.init(identifier: trayEvent.identifier, event: trayEvent))
+      default:
+        break
+      }
+    }
+
+    private func deliverWindowEvent(windowIdentifier: String, event: Event) {
+      var sink: VeloxEventStreamMultiplexer<WindowEvent>?
+      var label: String?
+      stateLock.lock()
+      if let objectIdentifier = windowsByTaoIdentifier[windowIdentifier],
+        let state = windows[objectIdentifier]
+      {
+        sink = windowEventStreams[objectIdentifier]
+        label = state.label
+      }
+      stateLock.unlock()
+
+      if let sink, let label {
+        let payload = VeloxRuntimeWry.makeWindowEvent(label: label, event: event)
+        sink.yield(payload)
+      }
+    }
+
+    private func deliverWebviewEvent(label: String, event: Event) {
+      var sink: VeloxEventStreamMultiplexer<WebviewEvent>?
+      stateLock.lock()
+      if let objectIdentifier = windowsByLabel[label] {
+        sink = webviewEventStreams[objectIdentifier]
+      }
+      stateLock.unlock()
+
+      if let sink {
+        let payload = VeloxRuntimeWry.makeWebviewEvent(label: label, event: event)
+        sink.yield(payload)
+      }
+    }
+
+    private func finishAllStreams() {
+      let windowSinks: [VeloxEventStreamMultiplexer<WindowEvent>]
+      let webviewSinks: [VeloxEventStreamMultiplexer<WebviewEvent>]
+
+      stateLock.lock()
+      windowSinks = Array(windowEventStreams.values)
+      webviewSinks = Array(webviewEventStreams.values)
+      windowEventStreams.removeAll()
+      webviewEventStreams.removeAll()
+      stateLock.unlock()
+
+      windowSinks.forEach { $0.finishAll() }
+      webviewSinks.forEach { $0.finishAll() }
+      menuEventStream.finishAll()
+      trayEventStream.finishAll()
     }
 
     private func toRunEvent(from event: Event) -> VeloxRunEvent<Event> {
@@ -369,6 +594,53 @@ public extension VeloxRuntimeWry {
       }
     }
 
+#if os(macOS)
+    public enum ActivationPolicy {
+      case regular
+      case accessory
+      case prohibited
+    }
+
+    @discardableResult
+    public func setActivationPolicy(_ policy: ActivationPolicy) -> Bool {
+      guard let raw else {
+        return false
+      }
+
+      let ffiPolicy: VeloxActivationPolicy
+      switch policy {
+      case .regular: ffiPolicy = VELOX_ACTIVATION_POLICY_REGULAR
+      case .accessory: ffiPolicy = VELOX_ACTIVATION_POLICY_ACCESSORY
+      case .prohibited: ffiPolicy = VELOX_ACTIVATION_POLICY_PROHIBITED
+      }
+      return velox_event_loop_set_activation_policy(raw, ffiPolicy)
+    }
+
+    @discardableResult
+    public func setDockVisibility(_ visible: Bool) -> Bool {
+      guard let raw else {
+        return false
+      }
+      return velox_event_loop_set_dock_visibility(raw, visible)
+    }
+
+    @discardableResult
+    public func hideApplication() -> Bool {
+      guard let raw else {
+        return false
+      }
+      return velox_event_loop_hide_application(raw)
+    }
+
+    @discardableResult
+    public func showApplication() -> Bool {
+      guard let raw else {
+        return false
+      }
+      return velox_event_loop_show_application(raw)
+    }
+#endif
+
     private final class EventLoopCallback {
       let handler: @Sendable (_ event: Event) -> ControlFlow
 
@@ -437,6 +709,7 @@ public extension VeloxRuntimeWry {
   /// Handle wrapper mirroring Tao's `Window`.
   final class Window {
     fileprivate let raw: UnsafeMutablePointer<VeloxWindowHandle>
+    private weak var owner: Runtime?
 
     public enum AttentionType: Int32, Sendable {
       case informational = 0
@@ -454,6 +727,38 @@ public extension VeloxRuntimeWry {
       case west = 7
     }
 
+    public struct Color: Sendable, Equatable {
+      public var red: Double
+      public var green: Double
+      public var blue: Double
+      public var alpha: Double
+
+      public init(red: Double, green: Double, blue: Double, alpha: Double = 1.0) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+      }
+
+      fileprivate func toFFI() -> VeloxColor {
+        func clamp(_ value: Double) -> UInt8 {
+          let clamped = min(max(value, 0.0), 1.0)
+          return UInt8((clamped * 255.0).rounded())
+        }
+        return VeloxColor(
+          red: clamp(red),
+          green: clamp(green),
+          blue: clamp(blue),
+          alpha: clamp(alpha)
+        )
+      }
+    }
+
+    public enum Theme: Sendable, Equatable {
+      case light
+      case dark
+    }
+
     fileprivate init?(raw: UnsafeMutablePointer<VeloxWindowHandle>?) {
       guard let raw else {
         return nil
@@ -469,6 +774,10 @@ public extension VeloxRuntimeWry {
       string(from: velox_window_identifier(raw))
     }
 
+    fileprivate func register(owner: Runtime) {
+      self.owner = owner
+    }
+
     /// Builds a Wry webview attached to the window.
     public func makeWebview(configuration: WebviewConfiguration? = nil) -> Webview? {
       if let configuration {
@@ -478,15 +787,27 @@ public extension VeloxRuntimeWry {
             guard let handle = velox_webview_build(raw, pointer) else {
               return nil
             }
-            return Webview(raw: handle)
+            let webview = Webview(raw: handle)
+            return register(webview: webview)
           }
         }
       } else {
         guard let handle = velox_webview_build(raw, nil) else {
           return nil
         }
-        return Webview(raw: handle)
+        let webview = Webview(raw: handle)
+        return register(webview: webview)
       }
+    }
+
+    private func register(webview: Webview?) -> Webview? {
+      guard let webview else {
+        return nil
+      }
+      if let owner {
+        webview.register(owner: owner, windowIdentifier: ObjectIdentifier(self))
+      }
+      return webview
     }
 
     @discardableResult
@@ -494,9 +815,17 @@ public extension VeloxRuntimeWry {
       return title.withCString { velox_window_set_title(raw, $0) }
     }
 
+    public func title() -> String {
+      string(from: velox_window_title(raw))
+    }
+
     @discardableResult
     public func setFullscreen(_ isFullscreen: Bool) -> Bool {
       return velox_window_set_fullscreen(raw, isFullscreen)
+    }
+
+    public func isFullscreen() -> Bool {
+      velox_window_is_fullscreen(raw)
     }
 
     @discardableResult
@@ -532,6 +861,175 @@ public extension VeloxRuntimeWry {
     @discardableResult
     public func setVisible(_ visible: Bool) -> Bool {
       return velox_window_set_visible(raw, visible)
+    }
+
+    @discardableResult
+    public func setMaximized(_ maximized: Bool) -> Bool {
+      velox_window_set_maximized(raw, maximized)
+    }
+
+    @discardableResult
+    public func setMinimized(_ minimized: Bool) -> Bool {
+      velox_window_set_minimized(raw, minimized)
+    }
+
+    @discardableResult
+    public func setMinimizable(_ minimizable: Bool) -> Bool {
+      velox_window_set_minimizable(raw, minimizable)
+    }
+
+    @discardableResult
+    public func setMaximizable(_ maximizable: Bool) -> Bool {
+      velox_window_set_maximizable(raw, maximizable)
+    }
+
+    @discardableResult
+    public func setClosable(_ closable: Bool) -> Bool {
+      velox_window_set_closable(raw, closable)
+    }
+
+    @discardableResult
+    public func setSkipTaskbar(_ skip: Bool) -> Bool {
+      velox_window_set_skip_taskbar(raw, skip)
+    }
+
+    @discardableResult
+    public func setBackgroundColor(_ color: Color?) -> Bool {
+      if let value = color {
+        var ffiColor = value.toFFI()
+        return withUnsafePointer(to: &ffiColor) { pointer in
+          velox_window_set_background_color(raw, pointer)
+        }
+      } else {
+        return velox_window_set_background_color(raw, nil)
+      }
+    }
+
+    @discardableResult
+    public func setTheme(_ theme: Theme?) -> Bool {
+      let ffiTheme: VeloxWindowTheme
+      switch theme {
+      case .some(.light): ffiTheme = VELOX_WINDOW_THEME_LIGHT
+      case .some(.dark): ffiTheme = VELOX_WINDOW_THEME_DARK
+      case .none: ffiTheme = VELOX_WINDOW_THEME_UNSPECIFIED
+      }
+      return velox_window_set_theme(raw, ffiTheme)
+    }
+
+    public func currentMonitor() -> MonitorInfo? {
+      decodeMonitorInfo(from: velox_window_current_monitor(raw))
+    }
+
+    public func primaryMonitor() -> MonitorInfo? {
+      decodeMonitorInfo(from: velox_window_primary_monitor(raw))
+    }
+
+    public func availableMonitors() -> [MonitorInfo] {
+      decodeMonitorInfoList(from: velox_window_available_monitors(raw))
+    }
+
+    public func monitor(at position: WindowPosition) -> MonitorInfo? {
+      let point = VeloxPoint(x: position.x, y: position.y)
+      return decodeMonitorInfo(from: velox_window_monitor_from_point(raw, point))
+    }
+
+    public func cursorPosition() -> WindowPosition? {
+      var point = VeloxPoint(x: 0, y: 0)
+      guard velox_window_cursor_position(raw, &point) else {
+        return nil
+      }
+      return WindowPosition(x: point.x, y: point.y)
+    }
+
+    public func isMaximized() -> Bool {
+      velox_window_is_maximized(raw)
+    }
+
+    public func isMinimized() -> Bool {
+      velox_window_is_minimized(raw)
+    }
+
+    public func isVisible() -> Bool {
+      velox_window_is_visible(raw)
+    }
+
+    public func isResizable() -> Bool {
+      velox_window_is_resizable(raw)
+    }
+
+    public func isDecorated() -> Bool {
+      velox_window_is_decorated(raw)
+    }
+
+    public func isAlwaysOnTop() -> Bool {
+      velox_window_is_always_on_top(raw)
+    }
+
+    public func isMinimizable() -> Bool {
+      velox_window_is_minimizable(raw)
+    }
+
+    public func isMaximizable() -> Bool {
+      velox_window_is_maximizable(raw)
+    }
+
+    public func isClosable() -> Bool {
+      velox_window_is_closable(raw)
+    }
+
+    public func scaleFactor() -> Double? {
+      var value: Double = 0
+      guard velox_window_scale_factor(raw, &value) else {
+        return nil
+      }
+      return value
+    }
+
+    public func innerPosition() -> WindowPosition? {
+      var point = VeloxPoint(x: 0, y: 0)
+      guard velox_window_inner_position(raw, &point) else {
+        return nil
+      }
+      return WindowPosition(x: point.x, y: point.y)
+    }
+
+    public func outerPosition() -> WindowPosition? {
+      var point = VeloxPoint(x: 0, y: 0)
+      guard velox_window_outer_position(raw, &point) else {
+        return nil
+      }
+      return WindowPosition(x: point.x, y: point.y)
+    }
+
+    public func innerSize() -> WindowSize? {
+      var size = VeloxSize(width: 0, height: 0)
+      guard velox_window_inner_size(raw, &size) else {
+        return nil
+      }
+          return WindowSize(width: size.width, height: size.height)
+    }
+
+    public func outerSize() -> WindowSize? {
+      var size = VeloxSize(width: 0, height: 0)
+      guard velox_window_outer_size(raw, &size) else {
+        return nil
+      }
+      return WindowSize(width: size.width, height: size.height)
+    }
+
+    public func isFocused() -> Bool {
+      velox_window_is_focused(raw)
+    }
+
+    public func events(
+      bufferingPolicy: AsyncStream<WindowEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<WindowEvent> {
+      guard let owner else {
+        return AsyncStream { continuation in
+          continuation.finish()
+        }
+      }
+      return owner.windowEventStream(for: ObjectIdentifier(self), bufferingPolicy: bufferingPolicy)
     }
 
     @discardableResult
@@ -615,6 +1113,8 @@ public extension VeloxRuntimeWry {
   /// Handle wrapper mirroring Wry's `WebView`.
   final class Webview {
     private let raw: UnsafeMutablePointer<VeloxWebviewHandle>
+    private weak var owner: Runtime?
+    private var windowIdentifier: ObjectIdentifier?
 
     fileprivate init?(raw: UnsafeMutablePointer<VeloxWebviewHandle>?) {
       guard let raw else {
@@ -625,6 +1125,22 @@ public extension VeloxRuntimeWry {
 
     deinit {
       velox_webview_free(raw)
+    }
+
+    fileprivate func register(owner: Runtime, windowIdentifier: ObjectIdentifier) {
+      self.owner = owner
+      self.windowIdentifier = windowIdentifier
+    }
+
+    public func events(
+      bufferingPolicy: AsyncStream<WebviewEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<WebviewEvent> {
+      guard let owner, let windowIdentifier else {
+        return AsyncStream { continuation in
+          continuation.finish()
+        }
+      }
+      return owner.webviewEventStream(for: windowIdentifier, bufferingPolicy: bufferingPolicy)
     }
 
     @discardableResult
@@ -682,6 +1198,20 @@ public extension VeloxRuntimeWry {
     public init(x: Double, y: Double) {
       self.x = x
       self.y = y
+    }
+  }
+
+  struct MonitorInfo: Sendable, Equatable {
+    public var name: String
+    public var position: WindowPosition
+    public var size: WindowSize
+    public var scaleFactor: Double
+
+    public init(name: String, position: WindowPosition, size: WindowSize, scaleFactor: Double) {
+      self.name = name
+      self.position = position
+      self.size = size
+      self.scaleFactor = scaleFactor
     }
   }
 
@@ -1174,6 +1704,108 @@ public extension VeloxRuntimeWry {
   }
 }
 
+public extension VeloxRuntimeWry {
+  enum WindowEvent: Sendable, Equatable {
+    case closeRequested(label: String)
+    case destroyed(label: String)
+    case resized(label: String, size: WindowSize)
+    case moved(label: String, position: WindowPosition)
+    case focused(label: String, isFocused: Bool)
+    case scaleFactorChanged(label: String, scaleFactor: Double, size: WindowSize)
+    case keyboardInput(label: String, input: KeyboardInput)
+    case imeText(label: String, text: String)
+    case modifiersChanged(label: String, modifiers: Modifiers)
+    case cursorMoved(label: String, position: WindowPosition)
+    case cursorEntered(label: String, deviceId: String)
+    case cursorLeft(label: String, deviceId: String)
+    case mouseInput(label: String, input: MouseInput)
+    case mouseWheel(label: String, delta: MouseWheelDelta, phase: String)
+    case droppedFile(label: String, path: String)
+    case hoveredFile(label: String, path: String)
+    case hoveredFileCancelled(label: String)
+    case themeChanged(label: String, theme: String)
+    case raw(label: String, description: String)
+    case redrawRequested(label: String)
+    case other(label: String, event: VeloxRuntimeWry.Event)
+  }
+
+  enum WebviewEvent: Sendable, Equatable {
+    case userEvent(label: String, description: String)
+    case other(label: String, event: VeloxRuntimeWry.Event)
+  }
+
+  static func makeWindowEvent(label: String, event: VeloxRuntimeWry.Event) -> WindowEvent {
+    switch event {
+    case .windowCloseRequested:
+      return .closeRequested(label: label)
+    case .windowDestroyed:
+      return .destroyed(label: label)
+    case .windowResized(_, let size):
+      return .resized(label: label, size: size)
+    case .windowMoved(_, let position):
+      return .moved(label: label, position: position)
+    case .windowFocused(_, let isFocused):
+      return .focused(label: label, isFocused: isFocused)
+    case .windowScaleFactorChanged(_, let scaleFactor, let size):
+      return .scaleFactorChanged(label: label, scaleFactor: scaleFactor, size: size)
+    case .windowKeyboardInput(_, let input):
+      return .keyboardInput(label: label, input: input)
+    case .windowImeText(_, let text):
+      return .imeText(label: label, text: text)
+    case .windowModifiersChanged(_, let modifiers):
+      return .modifiersChanged(label: label, modifiers: modifiers)
+    case .windowCursorMoved(_, let position):
+      return .cursorMoved(label: label, position: position)
+    case .windowCursorEntered(_, let deviceId):
+      return .cursorEntered(label: label, deviceId: deviceId)
+    case .windowCursorLeft(_, let deviceId):
+      return .cursorLeft(label: label, deviceId: deviceId)
+    case .windowMouseInput(_, let input):
+      return .mouseInput(label: label, input: input)
+    case .windowMouseWheel(_, let delta, let phase):
+      return .mouseWheel(label: label, delta: delta, phase: phase)
+    case .windowDroppedFile(_, let path):
+      return .droppedFile(label: label, path: path)
+    case .windowHoveredFile(_, let path):
+      return .hoveredFile(label: label, path: path)
+    case .windowHoveredFileCancelled:
+      return .hoveredFileCancelled(label: label)
+    case .windowThemeChanged(_, let theme):
+      return .themeChanged(label: label, theme: theme)
+    case .windowEvent(_, let description):
+      return .raw(label: label, description: description)
+    case .windowRedrawRequested:
+      return .redrawRequested(label: label)
+    default:
+      return .other(label: label, event: event)
+    }
+  }
+
+  static func makeWebviewEvent(label: String, event: VeloxRuntimeWry.Event) -> WebviewEvent {
+    switch event {
+    case .webviewEvent(_, let description):
+      return .userEvent(label: label, description: description)
+    default:
+      return .other(label: label, event: event)
+    }
+  }
+
+  enum MenuEvent: Sendable, Equatable {
+    case activated(identifier: String)
+    case other(identifier: String, event: VeloxRuntimeWry.Event)
+  }
+
+  struct TrayEventNotification: Sendable, Equatable {
+    public let identifier: String
+    public let event: TrayEvent
+
+    public init(identifier: String, event: TrayEvent) {
+      self.identifier = identifier
+      self.event = event
+    }
+  }
+}
+
 private enum VeloxEventDecoder {
   static func string(_ value: Any?) -> String? {
     if let string = value as? String {
@@ -1513,6 +2145,70 @@ public extension VeloxRuntimeWry {
   }
 }
 #endif
+
+private func decodeMonitorInfo(from pointer: UnsafePointer<CChar>?) -> VeloxRuntimeWry.MonitorInfo? {
+  guard let pointer else {
+    return nil
+  }
+
+  let jsonString = String(cString: pointer)
+  guard let data = jsonString.data(using: .utf8),
+    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    let monitor = decodeMonitorInfo(dictionary: object)
+  else {
+    return nil
+  }
+  return monitor
+}
+
+private func decodeMonitorInfoList(from pointer: UnsafePointer<CChar>?) -> [VeloxRuntimeWry.MonitorInfo] {
+  guard let pointer else {
+    return []
+  }
+
+  let jsonString = String(cString: pointer)
+  guard let data = jsonString.data(using: .utf8),
+    let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
+  else {
+    return []
+  }
+
+  return array.compactMap { element in
+    guard let dictionary = element as? [String: Any] else {
+      return nil
+    }
+    return decodeMonitorInfo(dictionary: dictionary)
+  }
+}
+
+private func decodeMonitorInfo(dictionary: [String: Any]) -> VeloxRuntimeWry.MonitorInfo? {
+  guard
+    let scaleFactor = VeloxEventDecoder.double(dictionary["scale_factor"]),
+    let positionDictionary = VeloxEventDecoder.dictionary(dictionary["position"]),
+    let sizeDictionary = VeloxEventDecoder.dictionary(dictionary["size"])
+  else {
+    return nil
+  }
+
+  let position = VeloxRuntimeWry.WindowPosition(
+    x: VeloxEventDecoder.double(positionDictionary["x"]) ?? 0,
+    y: VeloxEventDecoder.double(positionDictionary["y"]) ?? 0
+  )
+
+  let size = VeloxRuntimeWry.WindowSize(
+    width: VeloxEventDecoder.double(sizeDictionary["width"]) ?? 0,
+    height: VeloxEventDecoder.double(sizeDictionary["height"]) ?? 0
+  )
+
+  let name = VeloxEventDecoder.string(dictionary["name"]) ?? ""
+
+  return VeloxRuntimeWry.MonitorInfo(
+    name: name,
+    position: position,
+    size: size,
+    scaleFactor: scaleFactor
+  )
+}
 
 private func string(from pointer: UnsafePointer<CChar>?) -> String {
   guard let pointer else {

@@ -125,6 +125,18 @@ final class EventLoopIntegrationTests: XCTestCase {
     XCTAssertFalse(accumulator.events.isEmpty)
   }
 
+  func testEventLoopApplicationControls() throws {
+#if os(macOS)
+    let loop = try runOnMain { try EventLoopHolder.shared() }
+    XCTAssertTrue(loop.setActivationPolicy(.regular))
+    XCTAssertTrue(loop.setDockVisibility(true))
+    XCTAssertTrue(loop.hideApplication())
+    XCTAssertTrue(loop.showApplication())
+#else
+    throw XCTSkip("Application controls unavailable on this platform")
+#endif
+  }
+
   func testProxySendsUserEvent() throws {
 #if canImport(AppKit)
     if ProcessInfo.processInfo.environment["VELOX_ENABLE_UI_TESTS"] == "1" {
