@@ -1,6 +1,11 @@
 # VeloxRuntimeWry
 
-Early Swift Package scaffolding for the Velox port of Tauri's `tauri-runtime-wry` crate.
+Bringing Tauri to Swift developers.
+
+I love Rust as much as the next security paranoid person, but I do not love it to write apps,
+it gets in my way, and I am too old to develop an appreciation for poetry or Rust.   So this 
+is a port of Tauri to Swift so I can both build desktop apps using HTML with Swift backends
+and fill me with joy.
 
 ## Layout
 
