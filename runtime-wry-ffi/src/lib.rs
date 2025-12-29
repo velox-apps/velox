@@ -975,10 +975,16 @@ fn guard_panic_value<T: Default>(f: impl FnOnce() -> T) -> T {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "local-dev"))]
 #[no_mangle]
 pub extern "C" fn velox_app_state_force_launched() {
     tao::platform::macos::force_app_state_launched_for_testing();
+}
+
+#[cfg(all(target_os = "macos", not(feature = "local-dev")))]
+#[no_mangle]
+pub extern "C" fn velox_app_state_force_launched() {
+    // No-op when using crates.io tao (velox-testing feature not available)
 }
 
 fn with_window<R>(window: *mut VeloxWindowHandle, f: impl FnOnce(&Window) -> R) -> Option<R> {
@@ -1065,7 +1071,7 @@ pub extern "C" fn velox_event_loop_create_proxy(
         return ptr::null_mut();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", feature = "local-dev"))]
     tao::platform::macos::force_app_state_launched_for_testing();
 
     let event_loop = unsafe { &mut *event_loop };

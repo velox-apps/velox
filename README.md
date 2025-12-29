@@ -24,6 +24,42 @@ The plugin will invoke `cargo build` with the correct configuration (`debug` or 
 emit libraries into `runtime-wry-ffi/target`. If you prefer to build the Rust crate manually you
 can still run `cargo build` or `cargo build --release` inside `runtime-wry-ffi/`.
 
+### Build Modes
+
+Velox supports two build modes for the Rust FFI crate:
+
+#### Standard Build (crates.io)
+
+Uses published versions of `tao` and `wry` from crates.io. This is the default for clean checkouts and CI:
+
+```bash
+# Remove local patches if present
+rm -f .cargo/config.toml
+swift build
+```
+
+#### Local Development Build
+
+Uses locally patched `tao` and `wry` with additional testing features. Requires sibling checkouts of these repositories with the `velox-testing` feature added to tao's default features.
+
+```bash
+# Ensure .cargo/config.toml exists with patches (at package root, not runtime-wry-ffi)
+# Then build with local-dev feature:
+VELOX_LOCAL_DEV=1 swift build
+```
+
+The `.cargo/config.toml` (in the package root) patches crates.io dependencies with local paths:
+```toml
+[patch.crates-io]
+tao = { path = "../tao" }
+wry = { path = "../wry" }
+```
+
+**Requirements for Local Dev:**
+- Local `tao` version must match crates.io (currently 0.34.5)
+- Local `tao` must have `velox-testing` in its default features in `Cargo.toml`
+- Local `wry` version must match crates.io (currently 0.53.5)
+
 ## Swift Surface Preview
 
 ```swift

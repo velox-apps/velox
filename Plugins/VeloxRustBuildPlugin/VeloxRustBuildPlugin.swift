@@ -43,6 +43,10 @@ struct VeloxRustBuildPlugin: BuildToolPlugin {
     if isReleaseConfiguration() {
       buildCommand += " --release"
     }
+    // Enable local-dev feature when VELOX_LOCAL_DEV=1 (for testing with patched tao/wry)
+    if ProcessInfo.processInfo.environment["VELOX_LOCAL_DEV"] == "1" {
+      buildCommand += " --features local-dev"
+    }
     scriptLines.append(buildCommand)
     scriptLines.append("touch \"\(stampFile.string)\"")
 
@@ -96,6 +100,10 @@ extension VeloxRustBuildPlugin: XcodeBuildToolPlugin {
     var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\""
     if isReleaseConfiguration() {
       buildCommand += " --release"
+    }
+    // Enable local-dev feature when VELOX_LOCAL_DEV=1 (for testing with patched tao/wry)
+    if ProcessInfo.processInfo.environment["VELOX_LOCAL_DEV"] == "1" {
+      buildCommand += " --features local-dev"
     }
     scriptLines.append(buildCommand)
     scriptLines.append("touch \"\(stampFile.string)\"")

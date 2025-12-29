@@ -10,8 +10,10 @@ name = "velox_runtime_wry_ffi"
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-tao = { path = "../../tao", default-features = false, features = ["rwh_06", "velox-testing"] }
-wry = { path = "../../wry", default-features = false, features = ["os-webview", "protocol"] }
+# Note: Don't disable default-features for tao - we need defaults for patched local builds
+# where velox-testing is in defaults. Crates.io tao defaults are fine.
+tao = { version = "0.34", features = ["rwh_06"] }
+wry = { version = "0.53", default-features = false, features = ["os-webview", "protocol"] }
 tray-icon = { version = "0.21", default-features = false, features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -32,3 +34,6 @@ tracing = []
 macos-proxy = ["wry/mac-proxy"]
 unstable = []
 common-controls-v6 = []
+# Enable when using local patched tao/wry with velox-testing feature
+# The velox-testing feature must be enabled in the patched tao's Cargo.toml
+local-dev = []
