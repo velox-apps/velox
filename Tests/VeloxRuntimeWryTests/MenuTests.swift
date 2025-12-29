@@ -28,6 +28,15 @@ final class MenuTests: XCTestCase {
     XCTAssertEqual(menuItem.identifier, "app.quit")
 
     try runOnMain {
+      XCTAssertEqual(menuItem.title(), "Quit")
+      XCTAssertTrue(menuItem.setTitle("Quit Updated"))
+      XCTAssertEqual(menuItem.title(), "Quit Updated")
+      XCTAssertTrue(menuItem.isEnabled())
+      XCTAssertTrue(menuItem.setEnabled(false))
+      XCTAssertFalse(menuItem.isEnabled())
+      XCTAssertTrue(menuItem.setAccelerator("cmd+shift+Q"))
+      XCTAssertTrue(menuItem.setAccelerator(nil))
+      XCTAssertTrue(menuItem.setEnabled(true))
       XCTAssertTrue(submenu.append(menuItem))
       XCTAssertTrue(menuBar.append(submenu))
     }

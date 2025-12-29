@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,7 +68,141 @@ typedef struct {
 } VeloxWindowConfig;
 
 typedef struct {
+  const char *label;
+  const char *const *extensions;
+  size_t extension_count;
+} VeloxDialogFilter;
+
+typedef struct {
+  const char *title;
+  const char *default_path;
+  const VeloxDialogFilter *filters;
+  size_t filter_count;
+  bool allow_directories;
+  bool allow_multiple;
+} VeloxDialogOpenOptions;
+
+typedef struct {
+  const char *title;
+  const char *default_path;
+  const char *default_name;
+  const VeloxDialogFilter *filters;
+  size_t filter_count;
+} VeloxDialogSaveOptions;
+
+typedef struct {
+  char **paths;
+  size_t count;
+} VeloxDialogSelection;
+
+typedef enum {
+  VELOX_MESSAGE_DIALOG_LEVEL_INFO = 0,
+  VELOX_MESSAGE_DIALOG_LEVEL_WARNING = 1,
+  VELOX_MESSAGE_DIALOG_LEVEL_ERROR = 2,
+} VeloxMessageDialogLevel;
+
+typedef enum {
+  VELOX_MESSAGE_DIALOG_BUTTONS_OK = 0,
+  VELOX_MESSAGE_DIALOG_BUTTONS_OK_CANCEL = 1,
+  VELOX_MESSAGE_DIALOG_BUTTONS_YES_NO = 2,
+  VELOX_MESSAGE_DIALOG_BUTTONS_YES_NO_CANCEL = 3,
+} VeloxMessageDialogButtons;
+
+typedef struct {
+  const char *title;
+  const char *message;
+  VeloxMessageDialogLevel level;
+  VeloxMessageDialogButtons buttons;
+  const char *ok_label;
+  const char *cancel_label;
+  const char *yes_label;
+  const char *no_label;
+} VeloxMessageDialogOptions;
+
+typedef struct {
+  const char *title;
+  const char *message;
+  VeloxMessageDialogLevel level;
+  const char *ok_label;
+  const char *cancel_label;
+} VeloxConfirmDialogOptions;
+
+typedef struct {
+  const char *title;
+  const char *message;
+  VeloxMessageDialogLevel level;
+  const char *yes_label;
+  const char *no_label;
+} VeloxAskDialogOptions;
+
+typedef struct {
+  const char *title;
+  const char *message;
+  const char *placeholder;
+  const char *default_value;
+  const char *ok_label;
+  const char *cancel_label;
+} VeloxPromptDialogOptions;
+
+typedef struct {
+  char *value;
+  bool accepted;
+} VeloxPromptDialogResult;
+
+typedef struct {
+  const char *name;
+  const char *value;
+} VeloxCustomProtocolHeader;
+
+typedef struct {
+  const VeloxCustomProtocolHeader *headers;
+  size_t count;
+} VeloxCustomProtocolHeaderList;
+
+typedef struct {
+  const uint8_t *ptr;
+  size_t len;
+} VeloxCustomProtocolBuffer;
+
+typedef struct {
   const char *url;
+  const char *method;
+  VeloxCustomProtocolHeaderList headers;
+  VeloxCustomProtocolBuffer body;
+  const char *webview_id;
+} VeloxCustomProtocolRequest;
+
+typedef void (*VeloxCustomProtocolResponseFree)(void *user_data);
+
+typedef struct {
+  uint16_t status;
+  VeloxCustomProtocolHeaderList headers;
+  VeloxCustomProtocolBuffer body;
+  const char *mime_type;
+  VeloxCustomProtocolResponseFree free;
+  void *user_data;
+} VeloxCustomProtocolResponse;
+
+typedef bool (*VeloxCustomProtocolHandler)(
+  const VeloxCustomProtocolRequest *request,
+  VeloxCustomProtocolResponse *response,
+  void *user_data
+);
+
+typedef struct {
+  const char *scheme;
+  VeloxCustomProtocolHandler handler;
+  void *user_data;
+} VeloxCustomProtocolDefinition;
+
+typedef struct VeloxCustomProtocolList {
+  const VeloxCustomProtocolDefinition *protocols;
+  size_t count;
+} VeloxCustomProtocolList;
+
+typedef struct {
+  const char *url;
+  VeloxCustomProtocolList custom_protocols;
 } VeloxWebviewConfig;
 
 typedef struct {
@@ -198,6 +333,15 @@ bool velox_window_start_resize_dragging(
   VeloxResizeDirection direction
 );
 
+VeloxDialogSelection velox_dialog_open(const VeloxDialogOpenOptions *options);
+VeloxDialogSelection velox_dialog_save(const VeloxDialogSaveOptions *options);
+void velox_dialog_selection_free(VeloxDialogSelection selection);
+bool velox_dialog_message(const VeloxMessageDialogOptions *options);
+bool velox_dialog_confirm(const VeloxConfirmDialogOptions *options);
+bool velox_dialog_ask(const VeloxAskDialogOptions *options);
+VeloxPromptDialogResult velox_dialog_prompt(const VeloxPromptDialogOptions *options);
+void velox_dialog_prompt_result_free(VeloxPromptDialogResult result);
+
 VeloxWebviewHandle *velox_webview_build(VeloxWindowHandle *window, const VeloxWebviewConfig *config);
 void velox_webview_free(VeloxWebviewHandle *webview);
 bool velox_webview_navigate(VeloxWebviewHandle *webview, const char *url);
@@ -259,6 +403,10 @@ VeloxMenuItemHandle *velox_menu_item_new(
 );
 void velox_menu_item_free(VeloxMenuItemHandle *item);
 bool velox_menu_item_set_enabled(VeloxMenuItemHandle *item, bool enabled);
+bool velox_menu_item_is_enabled(VeloxMenuItemHandle *item);
+const char *velox_menu_item_text(VeloxMenuItemHandle *item);
+bool velox_menu_item_set_text(VeloxMenuItemHandle *item, const char *title);
+bool velox_menu_item_set_accelerator(VeloxMenuItemHandle *item, const char *accelerator);
 const char *velox_menu_item_identifier(VeloxMenuItemHandle *item);
 
 bool velox_tray_set_menu(VeloxTrayHandle *handle, VeloxMenuBarHandle *menu);

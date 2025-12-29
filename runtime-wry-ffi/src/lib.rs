@@ -17,7 +17,7 @@ use serde_json::{json, Map};
 use tao::{
     dpi::{LogicalPosition, LogicalSize, Size},
     event::{
-        ElementState, Event, MouseButton, MouseScrollDelta, StartCause,
+        ElementState, Event, MouseButton, MouseScrollDelta,
         WindowEvent as TaoWindowEvent,
     },
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
@@ -30,10 +30,17 @@ use tao::{
     },
 };
 
+use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS};
 use url::Url;
-use wry::{WebView, WebViewBuilder};
+use wry::{
+    http::{
+        header::{HeaderName, HeaderValue, CONTENT_TYPE},
+        Response as WryHttpResponse, StatusCode,
+    },
+    WebView, WebViewBuilder,
+};
 
 static LIBRARY_NAME: OnceLock<CString> = OnceLock::new();
 static RUNTIME_VERSION: OnceLock<CString> = OnceLock::new();
@@ -298,6 +305,7 @@ pub struct VeloxWindowConfig {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct VeloxWebviewConfig {
     pub url: *const c_char,
+    pub custom_protocols: VeloxCustomProtocolList,
 }
 
 #[repr(C)]
@@ -320,6 +328,189 @@ impl Default for VeloxTrayConfig {
             show_menu_on_left_click: true,
         }
     }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxDialogFilter {
+    pub label: *const c_char,
+    pub extensions: *const *const c_char,
+    pub extension_count: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxDialogOpenOptions {
+    pub title: *const c_char,
+    pub default_path: *const c_char,
+    pub filters: *const VeloxDialogFilter,
+    pub filter_count: usize,
+    pub allow_directories: bool,
+    pub allow_multiple: bool,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxDialogSaveOptions {
+    pub title: *const c_char,
+    pub default_path: *const c_char,
+    pub default_name: *const c_char,
+    pub filters: *const VeloxDialogFilter,
+    pub filter_count: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxDialogSelection {
+    pub paths: *mut *mut c_char,
+    pub count: usize,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum VeloxMessageDialogLevel {
+    Info = 0,
+    Warning = 1,
+    Error = 2,
+}
+
+impl Default for VeloxMessageDialogLevel {
+    fn default() -> Self {
+        Self::Info
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum VeloxMessageDialogButtons {
+    Ok = 0,
+    OkCancel = 1,
+    YesNo = 2,
+    YesNoCancel = 3,
+}
+
+impl Default for VeloxMessageDialogButtons {
+    fn default() -> Self {
+        Self::Ok
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxMessageDialogOptions {
+    pub title: *const c_char,
+    pub message: *const c_char,
+    pub level: VeloxMessageDialogLevel,
+    pub buttons: VeloxMessageDialogButtons,
+    pub ok_label: *const c_char,
+    pub cancel_label: *const c_char,
+    pub yes_label: *const c_char,
+    pub no_label: *const c_char,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxConfirmDialogOptions {
+    pub title: *const c_char,
+    pub message: *const c_char,
+    pub level: VeloxMessageDialogLevel,
+    pub ok_label: *const c_char,
+    pub cancel_label: *const c_char,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxAskDialogOptions {
+    pub title: *const c_char,
+    pub message: *const c_char,
+    pub level: VeloxMessageDialogLevel,
+    pub yes_label: *const c_char,
+    pub no_label: *const c_char,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxPromptDialogOptions {
+    pub title: *const c_char,
+    pub message: *const c_char,
+    pub placeholder: *const c_char,
+    pub default_value: *const c_char,
+    pub ok_label: *const c_char,
+    pub cancel_label: *const c_char,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxPromptDialogResult {
+    pub value: *mut c_char,
+    pub accepted: bool,
+}
+
+pub type VeloxCustomProtocolHandler = Option<
+    unsafe extern "C" fn(
+        request: *const VeloxCustomProtocolRequest,
+        response: *mut VeloxCustomProtocolResponse,
+        user_data: *mut c_void,
+    ) -> bool,
+>;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolDefinition {
+    pub scheme: *const c_char,
+    pub handler: VeloxCustomProtocolHandler,
+    pub user_data: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolList {
+    pub protocols: *const VeloxCustomProtocolDefinition,
+    pub count: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolHeader {
+    pub name: *const c_char,
+    pub value: *const c_char,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolHeaderList {
+    pub headers: *const VeloxCustomProtocolHeader,
+    pub count: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolBuffer {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolRequest {
+    pub url: *const c_char,
+    pub method: *const c_char,
+    pub headers: VeloxCustomProtocolHeaderList,
+    pub body: VeloxCustomProtocolBuffer,
+    pub webview_id: *const c_char,
+}
+
+pub type VeloxCustomProtocolResponseFree = Option<unsafe extern "C" fn(user_data: *mut c_void)>;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VeloxCustomProtocolResponse {
+    pub status: u16,
+    pub headers: VeloxCustomProtocolHeaderList,
+    pub body: VeloxCustomProtocolBuffer,
+    pub mime_type: *const c_char,
+    pub free: VeloxCustomProtocolResponseFree,
+    pub user_data: *mut c_void,
 }
 
 #[repr(C)]
@@ -380,6 +571,337 @@ fn theme_from_ffi(theme: VeloxWindowTheme) -> Option<Theme> {
     }
 }
 
+fn dialog_apply_filters(mut dialog: FileDialog, filters: &[VeloxDialogFilter]) -> FileDialog {
+    const EMPTY_EXTS: [&str; 0] = [];
+    for filter in filters {
+        let Some(label) = opt_cstring(filter.label) else {
+            continue;
+        };
+
+        if filter.extension_count == 0 || filter.extensions.is_null() {
+            dialog = dialog.add_filter(&label, &EMPTY_EXTS);
+            continue;
+        }
+
+        let raw_exts =
+            unsafe { std::slice::from_raw_parts(filter.extensions, filter.extension_count) };
+        let mut owned_exts = Vec::with_capacity(raw_exts.len());
+        for &ext_ptr in raw_exts {
+            if ext_ptr.is_null() {
+                continue;
+            }
+            if let Some(ext) = opt_cstring(ext_ptr) {
+                owned_exts.push(ext);
+            }
+        }
+        let ext_refs: Vec<&str> = owned_exts.iter().map(|s| s.as_str()).collect();
+        dialog = dialog.add_filter(&label, &ext_refs);
+    }
+    dialog
+}
+
+fn dialog_selection_from_paths(paths: Vec<std::path::PathBuf>) -> VeloxDialogSelection {
+    if paths.is_empty() {
+        return VeloxDialogSelection::default();
+    }
+
+    let mut raw_paths: Vec<*mut c_char> = Vec::with_capacity(paths.len());
+    for path in paths {
+        let display = path.to_string_lossy().into_owned();
+        match CString::new(display) {
+            Ok(cstr) => raw_paths.push(cstr.into_raw()),
+            Err(_) => continue,
+        }
+    }
+
+    if raw_paths.is_empty() {
+        return VeloxDialogSelection::default();
+    }
+
+    let count = raw_paths.len();
+    let boxed = raw_paths.into_boxed_slice();
+    let ptr = Box::into_raw(boxed) as *mut *mut c_char;
+    VeloxDialogSelection { paths: ptr, count }
+}
+
+fn message_level_from_ffi(level: VeloxMessageDialogLevel) -> MessageLevel {
+    match level {
+        VeloxMessageDialogLevel::Info => MessageLevel::Info,
+        VeloxMessageDialogLevel::Warning => MessageLevel::Warning,
+        VeloxMessageDialogLevel::Error => MessageLevel::Error,
+    }
+}
+
+fn prompt_result_from_string(value: Option<String>) -> VeloxPromptDialogResult {
+    if let Some(value) = value {
+        if let Ok(cstr) = CString::new(value) {
+            let ptr = cstr.into_raw();
+            VeloxPromptDialogResult {
+                value: ptr,
+                accepted: true,
+            }
+        } else {
+            VeloxPromptDialogResult::default()
+        }
+    } else {
+        VeloxPromptDialogResult::default()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_open(
+    options: *const VeloxDialogOpenOptions,
+) -> VeloxDialogSelection {
+    guard_panic_value(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return VeloxDialogSelection::default();
+        };
+
+        let mut dialog = FileDialog::new();
+        if let Some(title) = opt_cstring(options.title) {
+            dialog = dialog.set_title(&title);
+        }
+        if let Some(path) = opt_cstring(options.default_path) {
+            dialog = dialog.set_directory(std::path::Path::new(&path));
+        }
+
+        if options.filter_count > 0 && !options.filters.is_null() && !options.allow_directories {
+            let filters =
+                unsafe { std::slice::from_raw_parts(options.filters, options.filter_count) };
+            dialog = dialog_apply_filters(dialog, filters);
+        }
+
+        let selection_paths = if options.allow_directories {
+            if options.allow_multiple {
+                dialog.pick_folders().unwrap_or_default()
+            } else {
+                dialog.pick_folder().into_iter().collect()
+            }
+        } else if options.allow_multiple {
+            dialog.pick_files().unwrap_or_default()
+        } else {
+            dialog.pick_file().into_iter().collect()
+        };
+
+        dialog_selection_from_paths(selection_paths)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_save(
+    options: *const VeloxDialogSaveOptions,
+) -> VeloxDialogSelection {
+    guard_panic_value(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return VeloxDialogSelection::default();
+        };
+
+        let mut dialog = FileDialog::new();
+        if let Some(title) = opt_cstring(options.title) {
+            dialog = dialog.set_title(&title);
+        }
+        if let Some(path) = opt_cstring(options.default_path) {
+            dialog = dialog.set_directory(std::path::Path::new(&path));
+        }
+        if let Some(name) = opt_cstring(options.default_name) {
+            dialog = dialog.set_file_name(&name);
+        }
+
+        if options.filter_count > 0 && !options.filters.is_null() {
+            let filters =
+                unsafe { std::slice::from_raw_parts(options.filters, options.filter_count) };
+            dialog = dialog_apply_filters(dialog, filters);
+        }
+
+        let selection_paths = dialog.save_file().into_iter().collect();
+        dialog_selection_from_paths(selection_paths)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_selection_free(selection: VeloxDialogSelection) {
+    if selection.count == 0 || selection.paths.is_null() {
+        return;
+    }
+
+    unsafe {
+        let slice = std::slice::from_raw_parts_mut(selection.paths, selection.count);
+        let boxed = Box::from_raw(slice as *mut [*mut c_char]);
+        for &ptr in boxed.iter() {
+            if !ptr.is_null() {
+                drop(CString::from_raw(ptr));
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_message(options: *const VeloxMessageDialogOptions) -> bool {
+    guard_panic_bool(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return false;
+        };
+
+        let mut dialog = MessageDialog::new();
+        if let Some(title) = opt_cstring(options.title) {
+            dialog = dialog.set_title(&title);
+        }
+        let message = opt_cstring(options.message).unwrap_or_default();
+        dialog = dialog.set_description(&message);
+
+        dialog = dialog.set_level(message_level_from_ffi(options.level));
+
+        let ok_label = opt_cstring(options.ok_label);
+        let cancel_label = opt_cstring(options.cancel_label);
+        let yes_label = opt_cstring(options.yes_label);
+        let no_label = opt_cstring(options.no_label);
+
+        dialog = match options.buttons {
+            VeloxMessageDialogButtons::Ok => {
+                if let Some(label) = ok_label {
+                    dialog.set_buttons(MessageButtons::OkCustom(label))
+                } else {
+                    dialog.set_buttons(MessageButtons::Ok)
+                }
+            }
+            VeloxMessageDialogButtons::OkCancel => {
+                if let (Some(ok), Some(cancel)) = (ok_label.clone(), cancel_label.clone()) {
+                    dialog.set_buttons(MessageButtons::OkCancelCustom(ok, cancel))
+                } else {
+                    dialog.set_buttons(MessageButtons::OkCancel)
+                }
+            }
+            VeloxMessageDialogButtons::YesNo => dialog.set_buttons(MessageButtons::YesNo),
+            VeloxMessageDialogButtons::YesNoCancel => {
+                if let (Some(yes), Some(no), Some(cancel)) =
+                    (yes_label.clone(), no_label.clone(), cancel_label)
+                {
+                    dialog.set_buttons(MessageButtons::YesNoCancelCustom(yes, no, cancel))
+                } else {
+                    dialog.set_buttons(MessageButtons::YesNoCancel)
+                }
+            }
+        };
+
+        match dialog.show() {
+            MessageDialogResult::Ok | MessageDialogResult::Yes => true,
+            MessageDialogResult::Cancel
+            | MessageDialogResult::No
+            | MessageDialogResult::Custom(_) => false,
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_confirm(options: *const VeloxConfirmDialogOptions) -> bool {
+    guard_panic_bool(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return false;
+        };
+
+        let mut dialog = MessageDialog::new();
+        if let Some(title) = opt_cstring(options.title) {
+            dialog = dialog.set_title(&title);
+        }
+        let message = opt_cstring(options.message).unwrap_or_default();
+        dialog = dialog.set_description(&message);
+        dialog = dialog.set_level(message_level_from_ffi(options.level));
+
+        let ok_label = opt_cstring(options.ok_label);
+        let cancel_label = opt_cstring(options.cancel_label);
+        let positive_label = ok_label.clone();
+
+        dialog = if let (Some(ref ok), Some(ref cancel)) = (&ok_label, &cancel_label) {
+            dialog.set_buttons(MessageButtons::OkCancelCustom(ok.clone(), cancel.clone()))
+        } else {
+            dialog.set_buttons(MessageButtons::OkCancel)
+        };
+
+        match dialog.show() {
+            MessageDialogResult::Ok => true,
+            MessageDialogResult::Custom(choice) => positive_label
+                .map(|expected| choice == expected)
+                .unwrap_or(false),
+            MessageDialogResult::Yes => true,
+            _ => false,
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_ask(options: *const VeloxAskDialogOptions) -> bool {
+    guard_panic_bool(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return false;
+        };
+
+        let mut dialog = MessageDialog::new();
+        if let Some(title) = opt_cstring(options.title) {
+            dialog = dialog.set_title(&title);
+        }
+        let message = opt_cstring(options.message).unwrap_or_default();
+        dialog = dialog.set_description(&message);
+        dialog = dialog.set_level(message_level_from_ffi(options.level));
+
+        let yes_label = opt_cstring(options.yes_label);
+        let no_label = opt_cstring(options.no_label);
+        let positive_label = yes_label.clone();
+
+        dialog = if let (Some(ref yes), Some(ref no)) = (&yes_label, &no_label) {
+            dialog.set_buttons(MessageButtons::OkCancelCustom(yes.clone(), no.clone()))
+        } else {
+            dialog.set_buttons(MessageButtons::YesNo)
+        };
+
+        match dialog.show() {
+            MessageDialogResult::Yes => true,
+            MessageDialogResult::Ok => true,
+            MessageDialogResult::Custom(choice) => positive_label
+                .map(|expected| choice == expected)
+                .unwrap_or(false),
+            _ => false,
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_prompt(
+    options: *const VeloxPromptDialogOptions,
+) -> VeloxPromptDialogResult {
+    guard_panic_value(|| {
+        let Some(options) = (unsafe { options.as_ref() }) else {
+            return VeloxPromptDialogResult::default();
+        };
+
+        let title = opt_cstring(options.title).unwrap_or_default();
+        let message = opt_cstring(options.message).unwrap_or_default();
+        if message.is_empty() {
+            return VeloxPromptDialogResult::default();
+        }
+
+        let default_value = opt_cstring(options.default_value);
+        let placeholder = opt_cstring(options.placeholder);
+        let default_text = default_value.or(placeholder).unwrap_or_default();
+        let title_ref = if title.is_empty() {
+            "Prompt"
+        } else {
+            title.as_str()
+        };
+
+        let input = tinyfiledialogs::input_box(title_ref, &message, default_text.as_str());
+        prompt_result_from_string(input)
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn velox_dialog_prompt_result_free(result: VeloxPromptDialogResult) {
+    if !result.value.is_null() {
+        unsafe {
+            drop(CString::from_raw(result.value));
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn activation_policy_from_ffi(policy: VeloxActivationPolicy) -> ActivationPolicy {
     match policy {
@@ -436,6 +958,20 @@ fn guard_panic<T>(f: impl FnOnce() -> *mut T) -> *mut T {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(ptr) => ptr,
         Err(_) => ptr::null_mut(),
+    }
+}
+
+fn guard_panic_bool(f: impl FnOnce() -> bool) -> bool {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(result) => result,
+        Err(_) => false,
+    }
+}
+
+fn guard_panic_value<T: Default>(f: impl FnOnce() -> T) -> T {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(value) => value,
+        Err(_) => T::default(),
     }
 }
 
@@ -869,6 +1405,60 @@ pub extern "C" fn velox_menu_item_set_enabled(
 
 #[cfg(target_os = "macos")]
 #[no_mangle]
+pub extern "C" fn velox_menu_item_is_enabled(item: *mut VeloxMenuItemHandle) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return false;
+        };
+        item.item.is_enabled()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_text(item: *mut VeloxMenuItemHandle) -> *const c_char {
+    guard_panic_value(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return ptr::null();
+        };
+        write_string_to_buffer(&TITLE_BUFFER, item.item.text())
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_set_text(
+    item: *mut VeloxMenuItemHandle,
+    title: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        let text = opt_cstring(title).unwrap_or_default();
+        item.item.set_text(text);
+        true
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_item_set_accelerator(
+    item: *mut VeloxMenuItemHandle,
+    accelerator: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        item.item
+            .set_accelerator(accelerator_from_ptr(accelerator))
+            .is_ok()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
 pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> *const c_char {
     let Some(item) = (unsafe { item.as_ref() }) else {
         return ptr::null();
@@ -1120,24 +1710,31 @@ pub extern "C" fn velox_window_build(
 
     let build_result = catch_unwind(AssertUnwindSafe(|| {
         let mut result = None;
+        let mut built = false;
         event_loop
             .event_loop
             .run_return(|event, target, control_flow| {
-                if let Event::NewEvents(StartCause::Init) = event {
-                    let mut builder = TaoWindowBuilder::new();
+                // Build window on first event (Init, Poll, or any NewEvents)
+                // Init only fires once per event loop lifetime, so we can't rely on it
+                // for creating multiple windows
+                if !built {
+                    if let Event::NewEvents(_) = event {
+                        built = true;
+                        let mut builder = TaoWindowBuilder::new();
 
-                    if let Some(title) = opt_cstring(cfg.title) {
-                        builder = builder.with_title(title);
+                        if let Some(title) = opt_cstring(cfg.title) {
+                            builder = builder.with_title(title);
+                        }
+
+                        if cfg.width > 0 && cfg.height > 0 {
+                            builder = builder
+                                .with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
+                        }
+
+                        result = Some(builder.build(target));
+                        *control_flow = ControlFlow::Exit;
+                        return;
                     }
-
-                    if cfg.width > 0 && cfg.height > 0 {
-                        builder = builder
-                            .with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
-                    }
-
-                    result = Some(builder.build(target));
-                    *control_flow = ControlFlow::Exit;
-                    return;
                 }
 
                 *control_flow = ControlFlow::Exit;
@@ -1343,7 +1940,7 @@ pub extern "C" fn velox_window_set_skip_taskbar(
             target_os = "openbsd"
         )))]
         {
-            let _ = skip;
+            let _ = (w, skip);
             return false;
         }
     })
@@ -1830,11 +2427,208 @@ pub extern "C" fn velox_webview_build(
     let cfg = unsafe { config.as_ref().copied().unwrap_or_default() };
     let url = opt_cstring(cfg.url);
 
+    let ffi_protocols: Vec<(
+        String,
+        unsafe extern "C" fn(
+            *const VeloxCustomProtocolRequest,
+            *mut VeloxCustomProtocolResponse,
+            *mut c_void,
+        ) -> bool,
+        *mut c_void,
+    )> = if cfg.custom_protocols.count > 0 && !cfg.custom_protocols.protocols.is_null() {
+        unsafe {
+            std::slice::from_raw_parts(cfg.custom_protocols.protocols, cfg.custom_protocols.count)
+        }
+        .iter()
+        .filter_map(|definition| {
+            let handler = definition.handler?;
+            let scheme = opt_cstring(definition.scheme)?;
+            Some((scheme, handler, definition.user_data))
+        })
+        .collect()
+    } else {
+        Vec::new()
+    };
+
     with_window(window, |w| {
         let mut builder = WebViewBuilder::new();
 
         if let Some(url) = url.as_ref() {
             builder = builder.with_url(url.clone());
+        }
+
+        for (scheme, handler, user_data) in ffi_protocols.iter().cloned() {
+            builder = builder.with_asynchronous_custom_protocol(
+                scheme.clone(),
+                move |webview_id, request, responder| {
+                    let (parts, body_vec) = request.into_parts();
+                    let uri_string = parts.uri.to_string();
+                    let method_string = parts.method.as_str().to_string();
+                    let headers_map = parts.headers;
+
+                    let url_cstring = match CString::new(uri_string) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            let _ = responder.respond(
+                                WryHttpResponse::builder()
+                                    .status(StatusCode::BAD_REQUEST)
+                                    .body(Vec::new())
+                                    .unwrap(),
+                            );
+                            return;
+                        }
+                    };
+
+                    let method_cstring = match CString::new(method_string) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            let _ = responder.respond(
+                                WryHttpResponse::builder()
+                                    .status(StatusCode::BAD_REQUEST)
+                                    .body(Vec::new())
+                                    .unwrap(),
+                            );
+                            return;
+                        }
+                    };
+
+                    let webview_id_string = format!("{webview_id:?}");
+                    let webview_id_cstring = CString::new(webview_id_string)
+                        .unwrap_or_else(|_| CString::new("").expect("empty string"));
+
+                    let mut header_storage: Vec<CString> = Vec::new();
+                    let mut header_pairs: Vec<VeloxCustomProtocolHeader> = Vec::new();
+                    for (name, value) in headers_map.iter() {
+                        let name_str = name.as_str();
+                        let value_str = match value.to_str() {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+
+                        let Ok(name_cstring) = CString::new(name_str) else {
+                            continue;
+                        };
+                        let Ok(value_cstring) = CString::new(value_str) else {
+                            continue;
+                        };
+
+                        header_pairs.push(VeloxCustomProtocolHeader {
+                            name: name_cstring.as_ptr(),
+                            value: value_cstring.as_ptr(),
+                        });
+                        header_storage.push(name_cstring);
+                        header_storage.push(value_cstring);
+                    }
+
+                    let headers_list = VeloxCustomProtocolHeaderList {
+                        headers: if header_pairs.is_empty() {
+                            ptr::null()
+                        } else {
+                            header_pairs.as_ptr()
+                        },
+                        count: header_pairs.len(),
+                    };
+
+                    let body_buffer = VeloxCustomProtocolBuffer {
+                        ptr: body_vec.as_ptr(),
+                        len: body_vec.len(),
+                    };
+
+                    let ffi_request = VeloxCustomProtocolRequest {
+                        url: url_cstring.as_ptr(),
+                        method: method_cstring.as_ptr(),
+                        headers: headers_list,
+                        body: body_buffer,
+                        webview_id: webview_id_cstring.as_ptr(),
+                    };
+
+                    let mut ffi_response = VeloxCustomProtocolResponse::default();
+                    let handled = match catch_unwind(AssertUnwindSafe(|| unsafe {
+                        handler(&ffi_request, &mut ffi_response, user_data)
+                    })) {
+                        Ok(result) => result,
+                        Err(_) => false,
+                    };
+
+                    if !handled {
+                        let _ = responder.respond(
+                            WryHttpResponse::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(Vec::new())
+                                .unwrap(),
+                        );
+                        return;
+                    }
+
+                    let status = if ffi_response.status == 0 {
+                        StatusCode::OK
+                    } else {
+                        StatusCode::from_u16(ffi_response.status).unwrap_or(StatusCode::OK)
+                    };
+
+                    let mut builder = WryHttpResponse::builder().status(status);
+
+                    if !ffi_response.mime_type.is_null() {
+                        if let Ok(mime) = unsafe { CStr::from_ptr(ffi_response.mime_type) }.to_str()
+                        {
+                            if let Ok(value) = HeaderValue::from_str(mime) {
+                                builder = builder.header(CONTENT_TYPE, value);
+                            }
+                        }
+                    }
+
+                    if ffi_response.headers.count > 0 && !ffi_response.headers.headers.is_null() {
+                        let header_slice = unsafe {
+                            std::slice::from_raw_parts(
+                                ffi_response.headers.headers,
+                                ffi_response.headers.count,
+                            )
+                        };
+                        for header in header_slice {
+                            if header.name.is_null() || header.value.is_null() {
+                                continue;
+                            }
+                            let Ok(name_str) = unsafe { CStr::from_ptr(header.name) }.to_str()
+                            else {
+                                continue;
+                            };
+                            let Ok(value_str) = unsafe { CStr::from_ptr(header.value) }.to_str()
+                            else {
+                                continue;
+                            };
+                            let Ok(name) = HeaderName::from_bytes(name_str.as_bytes()) else {
+                                continue;
+                            };
+                            let Ok(value) = HeaderValue::from_str(value_str) else {
+                                continue;
+                            };
+                            builder = builder.header(name, value);
+                        }
+                    }
+
+                    let body = if ffi_response.body.len > 0 && !ffi_response.body.ptr.is_null() {
+                        unsafe {
+                            std::slice::from_raw_parts(ffi_response.body.ptr, ffi_response.body.len)
+                        }
+                        .to_vec()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let response = builder.body(body).unwrap_or_else(|_| {
+                        WryHttpResponse::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Vec::new())
+                            .unwrap()
+                    });
+
+                    let _ = responder.respond(response);
+
+                    if let Some(free) = ffi_response.free {
+                        unsafe { free(ffi_response.user_data) };
+                    }
+                },
+            );
         }
 
         builder

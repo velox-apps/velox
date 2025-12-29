@@ -83,6 +83,14 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_webview_show;
   (void)velox_webview_hide;
   (void)velox_webview_clear_browsing_data;
+  (void)velox_dialog_open;
+  (void)velox_dialog_save;
+  (void)velox_dialog_selection_free;
+  (void)velox_dialog_message;
+  (void)velox_dialog_confirm;
+  (void)velox_dialog_ask;
+  (void)velox_dialog_prompt;
+  (void)velox_dialog_prompt_result_free;
   (void)velox_tray_new;
   (void)velox_tray_free;
   (void)velox_tray_identifier;
@@ -106,6 +114,10 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_menu_item_new;
   (void)velox_menu_item_free;
   (void)velox_menu_item_set_enabled;
+  (void)velox_menu_item_is_enabled;
+  (void)velox_menu_item_text;
+  (void)velox_menu_item_set_text;
+  (void)velox_menu_item_set_accelerator;
   (void)velox_menu_item_identifier;
 #endif
 }

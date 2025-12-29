@@ -15,6 +15,34 @@ let package = Package(
     .library(
       name: "VeloxRuntimeWry",
       targets: ["VeloxRuntimeWry"]
+    ),
+    .executable(
+      name: "HelloWorld",
+      targets: ["HelloWorld"]
+    ),
+    .executable(
+      name: "State",
+      targets: ["State"]
+    ),
+    .executable(
+      name: "MultiWindow",
+      targets: ["MultiWindow"]
+    ),
+    .executable(
+      name: "Splashscreen",
+      targets: ["Splashscreen"]
+    ),
+    .executable(
+      name: "RunReturn",
+      targets: ["RunReturn"]
+    ),
+    .executable(
+      name: "Streaming",
+      targets: ["Streaming"]
+    ),
+    .executable(
+      name: "HelloWorld2",
+      targets: ["HelloWorld2"]
     )
   ],
   targets: [
@@ -52,6 +80,41 @@ let package = Package(
       name: "VeloxRuntimeWryTests",
       dependencies: ["VeloxRuntimeWry"],
       path: "Tests/VeloxRuntimeWryTests"
+    ),
+    .executableTarget(
+      name: "HelloWorld",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/HelloWorld"
+    ),
+    .executableTarget(
+      name: "State",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/State"
+    ),
+    .executableTarget(
+      name: "MultiWindow",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/MultiWindow"
+    ),
+    .executableTarget(
+      name: "Splashscreen",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Splashscreen"
+    ),
+    .executableTarget(
+      name: "RunReturn",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/RunReturn"
+    ),
+    .executableTarget(
+      name: "Streaming",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Streaming"
+    ),
+    .executableTarget(
+      name: "HelloWorld2",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/HelloWorld2"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",

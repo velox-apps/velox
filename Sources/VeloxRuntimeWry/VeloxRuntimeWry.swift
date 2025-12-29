@@ -1,6 +1,22 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 import VeloxRuntime
 import VeloxRuntimeWryFFI
+
+@_silgen_name("velox_custom_protocol_handler_bridge")
+@discardableResult
+func velox_custom_protocol_handler_bridge_c(
+  _ requestPointer: UnsafePointer<VeloxCustomProtocolRequest>?,
+  _ responsePointer: UnsafeMutablePointer<VeloxCustomProtocolResponse>?,
+  _ userData: UnsafeMutableRawPointer?
+) -> Bool
+
+@_silgen_name("velox_custom_protocol_response_bridge")
+func velox_custom_protocol_response_bridge_c(_ userData: UnsafeMutableRawPointer?)
 
 final class VeloxEventStreamMultiplexer<Value> {
   private var continuations: [UUID: AsyncStream<Value>.Continuation] = [:]
@@ -100,14 +116,631 @@ public enum VeloxRuntimeWry {
     }
   }
 
+  public struct CustomProtocol: Sendable {
+    public struct Request: Sendable {
+      public let url: String
+      public let method: String
+      public let headers: [String: String]
+      public let body: Data
+      public let webviewIdentifier: String
+
+      public init(
+        url: String,
+        method: String,
+        headers: [String: String],
+        body: Data,
+        webviewIdentifier: String
+      ) {
+        self.url = url
+        self.method = method
+        self.headers = headers
+        self.body = body
+        self.webviewIdentifier = webviewIdentifier
+      }
+    }
+
+    public struct Response: Sendable {
+      public var status: Int
+      public var headers: [String: String]
+      public var mimeType: String?
+      public var body: Data
+
+      public init(
+        status: Int = 200,
+        headers: [String: String] = [:],
+        mimeType: String? = nil,
+        body: Data = Data()
+      ) {
+        self.status = status
+        self.headers = headers
+        self.mimeType = mimeType
+        self.body = body
+      }
+    }
+
+    public typealias Handler = @Sendable (Request) -> Response?
+
+    public let scheme: String
+    let handler: Handler
+
+    public init(scheme: String, handler: @escaping Handler) {
+      self.scheme = scheme
+      self.handler = handler
+    }
+  }
+
+  static func duplicateCString(_ string: String) -> UnsafeMutablePointer<CChar>? {
+    string.withCString { source -> UnsafeMutablePointer<CChar>? in
+#if canImport(Darwin)
+      guard let duplicated = Darwin.strdup(source) else { return nil }
+      return duplicated
+#else
+      guard let duplicated = Glibc.strdup(source) else { return nil }
+      return duplicated
+#endif
+    }
+  }
+
+  static func stringFromNullablePointer(_ pointer: UnsafePointer<CChar>?) -> String {
+    guard let pointer else { return "" }
+    return String(cString: pointer)
+  }
+
   /// Webview configuration subset mirrored from `wry::WebViewBuilder`.
   public struct WebviewConfiguration: Sendable {
     public var url: String
+    public var customProtocols: [CustomProtocol]
 
-    public init(url: String = "") {
+    public init(url: String = "", customProtocols: [CustomProtocol] = []) {
       self.url = url
+      self.customProtocols = customProtocols
     }
   }
+
+  public enum Dialog {
+    public struct Filter: Sendable {
+      public var label: String
+      public var extensions: [String]
+
+      public init(label: String, extensions: [String]) {
+        self.label = label
+        self.extensions = extensions
+      }
+    }
+
+    public struct OpenOptions: Sendable {
+      public var title: String?
+      public var defaultURL: URL?
+      public var filters: [Filter]
+      public var allowDirectories: Bool
+      public var allowMultiple: Bool
+
+      public init(
+        title: String? = nil,
+        defaultURL: URL? = nil,
+        filters: [Filter] = [],
+        allowDirectories: Bool = false,
+        allowMultiple: Bool = false
+      ) {
+        self.title = title
+        self.defaultURL = defaultURL
+        self.filters = filters
+        self.allowDirectories = allowDirectories
+        self.allowMultiple = allowMultiple
+      }
+    }
+
+    public struct SaveOptions: Sendable {
+      public var title: String?
+      public var defaultURL: URL?
+      public var defaultFileName: String?
+      public var filters: [Filter]
+
+      public init(
+        title: String? = nil,
+        defaultURL: URL? = nil,
+        defaultFileName: String? = nil,
+        filters: [Filter] = []
+      ) {
+        self.title = title
+        self.defaultURL = defaultURL
+        self.defaultFileName = defaultFileName
+        self.filters = filters
+      }
+    }
+
+    public enum MessageLevel: Sendable {
+      case info
+      case warning
+      case error
+    }
+
+    public enum MessageButtons: Sendable {
+      case ok
+      case okCustom(String)
+      case okCancel
+      case okCancelCustom(ok: String, cancel: String)
+      case yesNo
+      case yesNoCancel
+      case yesNoCancelCustom(yes: String, no: String, cancel: String)
+    }
+
+    public struct MessageOptions: Sendable {
+      public var title: String?
+      public var message: String
+      public var level: MessageLevel
+      public var buttons: MessageButtons
+
+      public init(
+        title: String? = nil,
+        message: String,
+        level: MessageLevel = .info,
+        buttons: MessageButtons = .ok
+      ) {
+        self.title = title
+        self.message = message
+        self.level = level
+        self.buttons = buttons
+      }
+    }
+
+    public struct PromptOptions: Sendable {
+      public var title: String?
+      public var message: String
+      public var placeholder: String?
+      public var defaultValue: String?
+      public var okLabel: String?
+      public var cancelLabel: String?
+
+      public init(
+        title: String? = nil,
+        message: String,
+        placeholder: String? = nil,
+        defaultValue: String? = nil,
+        okLabel: String? = nil,
+        cancelLabel: String? = nil
+      ) {
+        self.title = title
+        self.message = message
+        self.placeholder = placeholder
+        self.defaultValue = defaultValue
+        self.okLabel = okLabel
+        self.cancelLabel = cancelLabel
+      }
+    }
+
+    public struct AskOptions: Sendable {
+      public var title: String?
+      public var level: MessageLevel
+      public var yesLabel: String?
+      public var noLabel: String?
+
+      public init(
+        title: String? = nil,
+        level: MessageLevel = .info,
+        yesLabel: String? = nil,
+        noLabel: String? = nil
+      ) {
+        self.title = title
+        self.level = level
+        self.yesLabel = yesLabel
+        self.noLabel = noLabel
+      }
+    }
+
+    public struct ConfirmOptions: Sendable {
+      public var title: String?
+      public var level: MessageLevel
+      public var okLabel: String?
+      public var cancelLabel: String?
+
+      public init(
+        title: String? = nil,
+        level: MessageLevel = .info,
+        okLabel: String? = nil,
+        cancelLabel: String? = nil
+      ) {
+        self.title = title
+        self.level = level
+        self.okLabel = okLabel
+        self.cancelLabel = cancelLabel
+      }
+    }
+
+    public static func open(_ options: OpenOptions = .init()) -> [URL] {
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let defaultPathPointer = options.defaultURL.flatMap { VeloxRuntimeWry.duplicateCString($0.path) }
+
+      var filterDefinitions: [VeloxDialogFilter] = []
+      var filterLabelPointers: [UnsafeMutablePointer<CChar>?] = []
+      var filterExtensionBlocks: [UnsafeMutablePointer<UnsafePointer<CChar>?>?] = []
+      var filterExtensionStorage: [[UnsafeMutablePointer<CChar>?]] = []
+
+      for filter in options.filters {
+        guard let labelPointer = VeloxRuntimeWry.duplicateCString(filter.label) else {
+          continue
+        }
+        filterLabelPointers.append(labelPointer)
+
+        var extensionPointers: [UnsafeMutablePointer<CChar>?] = []
+        extensionPointers.reserveCapacity(filter.extensions.count)
+        for ext in filter.extensions {
+          if let pointer = VeloxRuntimeWry.duplicateCString(ext) {
+            extensionPointers.append(pointer)
+          }
+        }
+        filterExtensionStorage.append(extensionPointers)
+
+        let extensionBlock: UnsafeMutablePointer<UnsafePointer<CChar>?>?
+        if extensionPointers.isEmpty {
+          extensionBlock = nil
+        } else {
+          let block = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: extensionPointers.count)
+          for (index, pointer) in extensionPointers.enumerated() {
+            block[index] = pointer.map { UnsafePointer($0) }
+          }
+          extensionBlock = block
+        }
+        filterExtensionBlocks.append(extensionBlock)
+
+        filterDefinitions.append(
+          VeloxDialogFilter(
+            label: UnsafePointer(labelPointer),
+            extensions: extensionBlock.map { UnsafePointer($0) },
+            extension_count: extensionPointers.count
+          )
+        )
+      }
+
+      defer {
+        if let titlePointer { free(titlePointer) }
+        if let defaultPathPointer { free(defaultPathPointer) }
+        for pointer in filterLabelPointers {
+          if let pointer { free(pointer) }
+        }
+        for (index, block) in filterExtensionBlocks.enumerated() {
+          if let block { block.deallocate() }
+          for pointer in filterExtensionStorage[index] {
+            if let pointer { free(pointer) }
+          }
+        }
+      }
+
+      var ffiOptions = VeloxDialogOpenOptions(
+        title: titlePointer,
+        default_path: defaultPathPointer,
+        filters: nil,
+        filter_count: 0,
+        allow_directories: options.allowDirectories,
+        allow_multiple: options.allowMultiple
+      )
+
+      return filterDefinitions.withUnsafeBufferPointer { buffer in
+        if let baseAddress = buffer.baseAddress, buffer.count > 0 {
+          ffiOptions.filters = baseAddress
+          ffiOptions.filter_count = buffer.count
+        }
+
+        return withUnsafeMutablePointer(to: &ffiOptions) { pointer in
+          let selection = velox_dialog_open(pointer)
+          defer { velox_dialog_selection_free(selection) }
+          return urls(from: selection)
+        }
+      }
+    }
+
+    public static func save(_ options: SaveOptions = .init()) -> URL? {
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let defaultPathPointer = options.defaultURL.flatMap { VeloxRuntimeWry.duplicateCString($0.path) }
+      let defaultNamePointer = options.defaultFileName.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+
+      var filterDefinitions: [VeloxDialogFilter] = []
+      var filterLabelPointers: [UnsafeMutablePointer<CChar>?] = []
+      var filterExtensionBlocks: [UnsafeMutablePointer<UnsafePointer<CChar>?>?] = []
+      var filterExtensionStorage: [[UnsafeMutablePointer<CChar>?]] = []
+
+      for filter in options.filters {
+        guard let labelPointer = VeloxRuntimeWry.duplicateCString(filter.label) else {
+          continue
+        }
+        filterLabelPointers.append(labelPointer)
+
+        var extensionPointers: [UnsafeMutablePointer<CChar>?] = []
+        for ext in filter.extensions {
+          if let pointer = VeloxRuntimeWry.duplicateCString(ext) {
+            extensionPointers.append(pointer)
+          }
+        }
+        filterExtensionStorage.append(extensionPointers)
+
+        let extensionBlock: UnsafeMutablePointer<UnsafePointer<CChar>?>?
+        if extensionPointers.isEmpty {
+          extensionBlock = nil
+        } else {
+          let block = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: extensionPointers.count)
+          for (index, pointer) in extensionPointers.enumerated() {
+            block[index] = pointer.map { UnsafePointer($0) }
+          }
+          extensionBlock = block
+        }
+        filterExtensionBlocks.append(extensionBlock)
+
+        filterDefinitions.append(
+          VeloxDialogFilter(
+            label: UnsafePointer(labelPointer),
+            extensions: extensionBlock.map { UnsafePointer($0) },
+            extension_count: extensionPointers.count
+          )
+        )
+      }
+
+      defer {
+        if let titlePointer { free(titlePointer) }
+        if let defaultPathPointer { free(defaultPathPointer) }
+        if let defaultNamePointer { free(defaultNamePointer) }
+        for pointer in filterLabelPointers {
+          if let pointer { free(pointer) }
+        }
+        for (index, block) in filterExtensionBlocks.enumerated() {
+          if let block { block.deallocate() }
+          for pointer in filterExtensionStorage[index] {
+            if let pointer { free(pointer) }
+          }
+        }
+      }
+
+      var ffiOptions = VeloxDialogSaveOptions(
+        title: titlePointer,
+        default_path: defaultPathPointer,
+        default_name: defaultNamePointer,
+        filters: nil,
+        filter_count: 0
+      )
+
+      let selections = filterDefinitions.withUnsafeBufferPointer { buffer -> [URL] in
+        if let baseAddress = buffer.baseAddress, buffer.count > 0 {
+          ffiOptions.filters = baseAddress
+          ffiOptions.filter_count = buffer.count
+        }
+
+        return withUnsafeMutablePointer(to: &ffiOptions) { pointer in
+          let selection = velox_dialog_save(pointer)
+          defer { velox_dialog_selection_free(selection) }
+          return urls(from: selection)
+        }
+      }
+
+      return selections.first
+    }
+
+    public static func saveAsync(_ options: SaveOptions = .init()) async -> URL? {
+      await runOnMain { save(options) }
+    }
+
+    public static func openAsync(_ options: OpenOptions = .init()) async -> [URL] {
+      await runOnMain { open(options) }
+    }
+
+    @discardableResult
+    public static func message(_ options: MessageOptions) -> Bool {
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      guard let messagePointer = VeloxRuntimeWry.duplicateCString(options.message) else {
+        return false
+      }
+
+      defer {
+        if let titlePointer { free(titlePointer) }
+        free(messagePointer)
+      }
+
+      let level = ffiLevel(from: options.level)
+
+      var okLabelPointer: UnsafeMutablePointer<CChar>?
+      var cancelLabelPointer: UnsafeMutablePointer<CChar>?
+      var yesLabelPointer: UnsafeMutablePointer<CChar>?
+      var noLabelPointer: UnsafeMutablePointer<CChar>?
+
+      let buttons: VeloxMessageDialogButtons
+      switch options.buttons {
+      case .ok:
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_OK
+      case let .okCustom(okLabel):
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_OK
+        okLabelPointer = VeloxRuntimeWry.duplicateCString(okLabel)
+      case .okCancel:
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_OK_CANCEL
+      case let .okCancelCustom(okLabel, cancelLabel):
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_OK_CANCEL
+        okLabelPointer = VeloxRuntimeWry.duplicateCString(okLabel)
+        cancelLabelPointer = VeloxRuntimeWry.duplicateCString(cancelLabel)
+      case .yesNo:
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_YES_NO
+      case .yesNoCancel:
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_YES_NO_CANCEL
+      case let .yesNoCancelCustom(yesLabel, noLabel, cancelLabel):
+        buttons = VELOX_MESSAGE_DIALOG_BUTTONS_YES_NO_CANCEL
+        yesLabelPointer = VeloxRuntimeWry.duplicateCString(yesLabel)
+        noLabelPointer = VeloxRuntimeWry.duplicateCString(noLabel)
+        cancelLabelPointer = VeloxRuntimeWry.duplicateCString(cancelLabel)
+      }
+
+      defer {
+        if let okLabelPointer { free(okLabelPointer) }
+        if let cancelLabelPointer { free(cancelLabelPointer) }
+        if let yesLabelPointer { free(yesLabelPointer) }
+        if let noLabelPointer { free(noLabelPointer) }
+      }
+
+      var ffiOptions = VeloxMessageDialogOptions(
+        title: titlePointer,
+        message: UnsafePointer(messagePointer),
+        level: level,
+        buttons: buttons,
+        ok_label: okLabelPointer.map { UnsafePointer($0) },
+        cancel_label: cancelLabelPointer.map { UnsafePointer($0) },
+        yes_label: yesLabelPointer.map { UnsafePointer($0) },
+        no_label: noLabelPointer.map { UnsafePointer($0) }
+      )
+
+      return withUnsafePointer(to: &ffiOptions) { pointer in
+        velox_dialog_message(pointer)
+      }
+    }
+
+    @discardableResult
+    public static func messageAsync(_ options: MessageOptions) async -> Bool {
+      await runOnMain { message(options) }
+    }
+
+    public static func prompt(_ options: PromptOptions) -> String? {
+      guard let messagePointer = VeloxRuntimeWry.duplicateCString(options.message) else {
+        return nil
+      }
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let placeholderPointer = options.placeholder.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let defaultValuePointer = options.defaultValue.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let okLabelPointer = options.okLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let cancelLabelPointer = options.cancelLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+
+      defer {
+        free(messagePointer)
+        if let titlePointer { free(titlePointer) }
+        if let placeholderPointer { free(placeholderPointer) }
+        if let defaultValuePointer { free(defaultValuePointer) }
+        if let okLabelPointer { free(okLabelPointer) }
+        if let cancelLabelPointer { free(cancelLabelPointer) }
+      }
+
+      var ffiOptions = VeloxPromptDialogOptions(
+        title: titlePointer,
+        message: UnsafePointer(messagePointer),
+        placeholder: placeholderPointer.flatMap { UnsafePointer($0) },
+        default_value: defaultValuePointer.flatMap { UnsafePointer($0) },
+        ok_label: okLabelPointer.flatMap { UnsafePointer($0) },
+        cancel_label: cancelLabelPointer.flatMap { UnsafePointer($0) }
+      )
+
+      let result = withUnsafePointer(to: &ffiOptions) { pointer in
+        velox_dialog_prompt(pointer)
+      }
+
+      defer {
+        velox_dialog_prompt_result_free(result)
+      }
+
+      guard result.accepted, let valuePointer = result.value else {
+        return nil
+      }
+      return String(cString: valuePointer)
+    }
+
+    public static func promptAsync(_ options: PromptOptions) async -> String? {
+      await runOnMain { prompt(options) }
+    }
+
+    @discardableResult
+    public static func ask(_ message: String, options: AskOptions = .init()) -> Bool {
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      guard let messagePointer = VeloxRuntimeWry.duplicateCString(message) else {
+        if let titlePointer { free(titlePointer) }
+        return false
+      }
+      let yesLabelPointer = options.yesLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let noLabelPointer = options.noLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+
+      defer {
+        if let titlePointer { free(titlePointer) }
+        free(messagePointer)
+        if let yesLabelPointer { free(yesLabelPointer) }
+        if let noLabelPointer { free(noLabelPointer) }
+      }
+
+      var ffiOptions = VeloxAskDialogOptions(
+        title: titlePointer,
+        message: UnsafePointer(messagePointer),
+        level: ffiLevel(from: options.level),
+        yes_label: yesLabelPointer.flatMap { UnsafePointer($0) },
+        no_label: noLabelPointer.flatMap { UnsafePointer($0) }
+      )
+
+      return withUnsafePointer(to: &ffiOptions) { pointer in
+        velox_dialog_ask(pointer)
+      }
+    }
+
+    @discardableResult
+    public static func askAsync(_ message: String, options: AskOptions = .init()) async -> Bool {
+      await runOnMain { ask(message, options: options) }
+    }
+
+    @discardableResult
+    public static func confirm(_ message: String, options: ConfirmOptions = .init()) -> Bool {
+      let titlePointer = options.title.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      guard let messagePointer = VeloxRuntimeWry.duplicateCString(message) else {
+        if let titlePointer { free(titlePointer) }
+        return false
+      }
+      let okLabelPointer = options.okLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+      let cancelLabelPointer = options.cancelLabel.flatMap { VeloxRuntimeWry.duplicateCString($0) }
+
+      defer {
+        if let titlePointer { free(titlePointer) }
+        free(messagePointer)
+        if let okLabelPointer { free(okLabelPointer) }
+        if let cancelLabelPointer { free(cancelLabelPointer) }
+      }
+
+      var ffiOptions = VeloxConfirmDialogOptions(
+        title: titlePointer,
+        message: UnsafePointer(messagePointer),
+        level: ffiLevel(from: options.level),
+        ok_label: okLabelPointer.flatMap { UnsafePointer($0) },
+        cancel_label: cancelLabelPointer.flatMap { UnsafePointer($0) }
+      )
+
+      return withUnsafePointer(to: &ffiOptions) { pointer in
+        velox_dialog_confirm(pointer)
+      }
+    }
+
+    @discardableResult
+    public static func confirmAsync(_ message: String, options: ConfirmOptions = .init()) async -> Bool {
+      await runOnMain { confirm(message, options: options) }
+    }
+
+    private static func ffiLevel(from level: MessageLevel) -> VeloxMessageDialogLevel {
+      switch level {
+      case .info: return VELOX_MESSAGE_DIALOG_LEVEL_INFO
+      case .warning: return VELOX_MESSAGE_DIALOG_LEVEL_WARNING
+      case .error: return VELOX_MESSAGE_DIALOG_LEVEL_ERROR
+      }
+    }
+
+    private static func runOnMain<T>(_ work: @escaping () -> T) async -> T {
+      await withCheckedContinuation { continuation in
+        if Thread.isMainThread {
+          continuation.resume(returning: work())
+        } else {
+          DispatchQueue.main.async {
+            continuation.resume(returning: work())
+          }
+        }
+      }
+    }
+
+    private static func urls(from selection: VeloxDialogSelection) -> [URL] {
+      guard selection.count > 0, let base = selection.paths else {
+        return []
+      }
+
+      let buffer = UnsafeBufferPointer(start: base, count: Int(selection.count))
+      return buffer.compactMap { pointer in
+        guard let pointer else { return nil }
+        return URL(fileURLWithPath: String(cString: pointer))
+      }
+    }
+}
+
 }
 
 public extension VeloxRuntimeWry {
@@ -778,24 +1411,66 @@ public extension VeloxRuntimeWry {
       self.owner = owner
     }
 
-    /// Builds a Wry webview attached to the window.
-    public func makeWebview(configuration: WebviewConfiguration? = nil) -> Webview? {
-      if let configuration {
-        return withOptionalCString(configuration.url) { urlPointer in
-          var native = VeloxWebviewConfig(url: urlPointer)
-          return withUnsafePointer(to: &native) { pointer in
+  /// Builds a Wry webview attached to the window.
+  public func makeWebview(configuration: WebviewConfiguration? = nil) -> Webview? {
+    if let configuration {
+      var handlerBoxes: [VeloxCustomProtocolHandlerBox] = []
+      var schemePointers: [UnsafeMutablePointer<CChar>?] = []
+      var definitions: [VeloxCustomProtocolDefinition] = []
+
+      for custom in configuration.customProtocols {
+        guard !custom.scheme.isEmpty, let schemePointer = VeloxRuntimeWry.duplicateCString(custom.scheme) else {
+          continue
+        }
+
+        let box = VeloxCustomProtocolHandlerBox(handler: custom.handler)
+        handlerBoxes.append(box)
+        schemePointers.append(schemePointer)
+
+        var definition = VeloxCustomProtocolDefinition()
+        definition.scheme = UnsafePointer(schemePointer)
+        definition.handler = velox_custom_protocol_handler_bridge_c
+        definition.user_data = Unmanaged.passUnretained(box).toOpaque()
+        definitions.append(definition)
+      }
+
+      defer {
+        for pointer in schemePointers {
+          if let pointer { free(pointer) }
+        }
+      }
+
+      return withOptionalCString(configuration.url) { urlPointer in
+        var native = VeloxWebviewConfig(
+          url: urlPointer,
+          custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0)
+        )
+
+        return definitions.withUnsafeBufferPointer { buffer in
+          if let baseAddress = buffer.baseAddress, buffer.count > 0 {
+            native.custom_protocols = VeloxCustomProtocolList(
+              protocols: baseAddress,
+              count: buffer.count
+            )
+          }
+
+          return withUnsafePointer(to: native) { pointer in
             guard let handle = velox_webview_build(raw, pointer) else {
               return nil
             }
-            let webview = Webview(raw: handle)
+            guard let webview = Webview(raw: handle) else {
+              return nil
+            }
+            webview.installCustomProtocolHandlers(handlerBoxes)
             return register(webview: webview)
           }
         }
-      } else {
-        guard let handle = velox_webview_build(raw, nil) else {
-          return nil
-        }
-        let webview = Webview(raw: handle)
+      }
+    } else {
+      guard let handle = velox_webview_build(raw, nil) else {
+        return nil
+      }
+      let webview = Webview(raw: handle)
         return register(webview: webview)
       }
     }
@@ -1115,6 +1790,7 @@ public extension VeloxRuntimeWry {
     private let raw: UnsafeMutablePointer<VeloxWebviewHandle>
     private weak var owner: Runtime?
     private var windowIdentifier: ObjectIdentifier?
+    private var customProtocolHandlers: [VeloxCustomProtocolHandlerBox] = []
 
     fileprivate init?(raw: UnsafeMutablePointer<VeloxWebviewHandle>?) {
       guard let raw else {
@@ -1130,6 +1806,10 @@ public extension VeloxRuntimeWry {
     fileprivate func register(owner: Runtime, windowIdentifier: ObjectIdentifier) {
       self.owner = owner
       self.windowIdentifier = windowIdentifier
+    }
+
+    func installCustomProtocolHandlers(_ handlers: [VeloxCustomProtocolHandlerBox]) {
+      customProtocolHandlers = handlers
     }
 
     public func events(
@@ -2043,12 +2723,49 @@ public extension VeloxRuntimeWry {
       velox_menu_item_free(raw)
     }
 
+    public func title() -> String {
+      guard Thread.isMainThread else {
+        return ""
+      }
+      return string(from: velox_menu_item_text(raw))
+    }
+
+    @discardableResult
+    public func setTitle(_ title: String) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return title.withCString { pointer in
+        velox_menu_item_set_text(raw, pointer)
+      }
+    }
+
     @discardableResult
     public func setEnabled(_ isEnabled: Bool) -> Bool {
       guard Thread.isMainThread else {
         return false
       }
       return velox_menu_item_set_enabled(raw, isEnabled)
+    }
+
+    public func isEnabled() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_menu_item_is_enabled(raw)
+    }
+
+    @discardableResult
+    public func setAccelerator(_ accelerator: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      if let accelerator {
+        return accelerator.withCString { pointer in
+          velox_menu_item_set_accelerator(raw, pointer)
+        }
+      }
+      return velox_menu_item_set_accelerator(raw, nil)
     }
   }
 
