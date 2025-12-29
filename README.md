@@ -1,20 +1,9 @@
-# VeloxRuntimeWry
-
 Bringing Tauri to Swift developers.
 
 I love Rust as much as the next security paranoid person, but I do not love it to write apps,
 it gets in my way, and I am too old to develop an appreciation for poetry or Rust.   So this 
 is a port of Tauri to Swift so I can both build desktop apps using HTML with Swift backends
 and fill me with joy.
-
-## Layout
-
-- `Package.swift`: Swift Package definition exposing the `VeloxRuntimeWry` library target.
-- `Sources/VeloxRuntimeWry`: Swift surface area that mirrors the Tauri runtime concepts with
-  Velox naming.
-- `Sources/VeloxRuntimeWryFFI`: Lightweight C target that bridges into the Rust static library.
-- `runtime-wry-ffi`: Rust crate producing a `velox_runtime_wry_ffi` static/dynamic library that
-  re-exports selected pieces of `tao`, `wry`, and `tauri-runtime-wry`.
 
 ## Building
 
@@ -29,41 +18,28 @@ The plugin will invoke `cargo build` with the correct configuration (`debug` or 
 emit libraries into `runtime-wry-ffi/target`. If you prefer to build the Rust crate manually you
 can still run `cargo build` or `cargo build --release` inside `runtime-wry-ffi/`.
 
-### Build Modes
+## Examples
 
-Velox supports two build modes for the Rust FFI crate:
+The repository includes several example applications demonstrating Velox capabilities. Examples are located in the `Examples/` directory.
 
-#### Standard Build (crates.io)
+### Running Examples
 
-Uses published versions of `tao` and `wry` from crates.io. This is the default for clean checkouts and CI:
+Build and run any example using Swift Package Manager:
 
 ```bash
-# Remove local patches if present
-rm -f .cargo/config.toml
+# Build all examples
 swift build
+
+# Run a specific example
+swift run HelloWorld
+swift run HelloWorld2
+swift run MultiWindow
+swift run State
+swift run Splashscreen
+swift run Streaming
+swift run RunReturn
 ```
 
-#### Local Development Build
-
-Uses locally patched `tao` and `wry` with additional testing features. Requires sibling checkouts of these repositories with the `velox-testing` feature added to tao's default features.
-
-```bash
-# Ensure .cargo/config.toml exists with patches (at package root, not runtime-wry-ffi)
-# Then build with local-dev feature:
-VELOX_LOCAL_DEV=1 swift build
-```
-
-The `.cargo/config.toml` (in the package root) patches crates.io dependencies with local paths:
-```toml
-[patch.crates-io]
-tao = { path = "../tao" }
-wry = { path = "../wry" }
-```
-
-**Requirements for Local Dev:**
-- Local `tao` version must match crates.io (currently 0.34.5)
-- Local `tao` must have `velox-testing` in its default features in `Cargo.toml`
-- Local `wry` version must match crates.io (currently 0.53.5)
 
 ## Swift Surface Preview
 
@@ -106,28 +82,6 @@ The Swift API now includes helpers to:
 ### Runtime Lifecycle
 
 Velox now ships a nascent `VeloxRuntime` module that defines the Swift-first protocols mirroring Tauri's runtime traits. `VeloxRuntimeWry.Runtime` remains a stub while the native implementation is completed; the event-loop based APIs remain the primary entry point until the dedicated Swift runtime is feature-complete.
-
-## Examples
-
-The repository includes several example applications demonstrating Velox capabilities. Examples are located in the `Examples/` directory.
-
-### Running Examples
-
-Build and run any example using Swift Package Manager:
-
-```bash
-# Build all examples
-swift build
-
-# Run a specific example
-swift run HelloWorld
-swift run HelloWorld2
-swift run MultiWindow
-swift run State
-swift run Splashscreen
-swift run Streaming
-swift run RunReturn
-```
 
 ### Asset Loading Approaches
 
@@ -262,3 +216,51 @@ let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
   }
 }
 ```
+
+## The Small Print set in H2
+
+### Layout
+
+- `Package.swift`: Swift Package definition exposing the `VeloxRuntimeWry` library target.
+- `Sources/VeloxRuntimeWry`: Swift surface area that mirrors the Tauri runtime concepts with
+  Velox naming.
+- `Sources/VeloxRuntimeWryFFI`: Lightweight C target that bridges into the Rust static library.
+- `runtime-wry-ffi`: Rust crate producing a `velox_runtime_wry_ffi` static/dynamic library that
+  re-exports selected pieces of `tao`, `wry`, and `tauri-runtime-wry`.
+
+### Build Modes
+
+Velox supports two build modes for the Rust FFI crate:
+
+#### Standard Build (crates.io)
+
+Uses published versions of `tao` and `wry` from crates.io. This is the default for clean checkouts and CI:
+
+```bash
+# Remove local patches if present
+rm -f .cargo/config.toml
+swift build
+```
+
+#### Local Development Build
+
+Uses locally patched `tao` and `wry` with additional testing features. Requires sibling checkouts of these repositories with the `velox-testing` feature added to tao's default features.
+
+```bash
+# Ensure .cargo/config.toml exists with patches (at package root, not runtime-wry-ffi)
+# Then build with local-dev feature:
+VELOX_LOCAL_DEV=1 swift build
+```
+
+The `.cargo/config.toml` (in the package root) patches crates.io dependencies with local paths:
+```toml
+[patch.crates-io]
+tao = { path = "../tao" }
+wry = { path = "../wry" }
+```
+
+**Requirements for Local Dev:**
+- Local `tao` version must match crates.io (currently 0.34.5)
+- Local `tao` must have `velox-testing` in its default features in `Cargo.toml`
+- Local `wry` version must match crates.io (currently 0.53.5)
+
