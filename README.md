@@ -20,6 +20,11 @@ The plugin will invoke `cargo build` with the correct configuration (`debug` or 
 emit libraries into `runtime-wry-ffi/target`. If you prefer to build the Rust crate manually you
 can still run `cargo build` or `cargo build --release` inside `runtime-wry-ffi/`.
 
+## Create New Projects
+
+Use the [create-velox-app](https://github.com/velox-apps/create-velox-app) command to create a new
+blank project, starting from one of the built-in templates.
+
 ## Examples
 
 The repository includes several example applications demonstrating Velox capabilities. Examples are located in the `Examples/` directory.
