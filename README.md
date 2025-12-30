@@ -5,6 +5,8 @@ it gets in my way, and I am too old to develop an appreciation for poetry or Rus
 is a port of Tauri to Swift so I can both build desktop apps using HTML with Swift backends
 and fill me with joy.
 
+Discord: [invite](https://discord.gg/nZKv7kkvb)
+
 ## Building
 
 The Swift package declares a build-tool plugin that automatically compiles the Rust FFI crate
