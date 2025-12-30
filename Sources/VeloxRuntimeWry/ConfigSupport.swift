@@ -1,0 +1,325 @@
+// Copyright 2019-2024 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+
+import Foundation
+import VeloxRuntime
+
+// MARK: - EventLoop Extensions for Config
+
+public extension VeloxRuntimeWry.EventLoop {
+  /// Create a window from a WindowConfig
+  func makeWindow(from config: WindowConfig) -> VeloxRuntimeWry.Window? {
+    let windowConfig = VeloxRuntimeWry.WindowConfiguration(
+      width: UInt32(config.effectiveWidth),
+      height: UInt32(config.effectiveHeight),
+      title: config.effectiveTitle
+    )
+
+    guard let window = makeWindow(configuration: windowConfig) else {
+      return nil
+    }
+
+    // Apply additional configuration
+    applyWindowConfig(config, to: window)
+
+    return window
+  }
+
+  /// Apply a full VeloxConfig, creating all windows marked with create: true
+  /// Returns a dictionary mapping window labels to created windows
+  @discardableResult
+  func applyConfig(_ config: VeloxConfig) -> [String: VeloxRuntimeWry.Window] {
+    var windows: [String: VeloxRuntimeWry.Window] = [:]
+
+    // Apply macOS-specific settings
+    #if os(macOS)
+    if let macOS = config.app.macOS {
+      if let policy = macOS.activationPolicy {
+        switch policy {
+        case .regular:
+          setActivationPolicy(.regular)
+        case .accessory:
+          setActivationPolicy(.accessory)
+        case .prohibited:
+          setActivationPolicy(.prohibited)
+        }
+      }
+    }
+    #endif
+
+    // Create windows marked with create: true
+    for windowConfig in config.app.windows where windowConfig.shouldCreate {
+      if let window = makeWindow(from: windowConfig) {
+        windows[windowConfig.label] = window
+      }
+    }
+
+    return windows
+  }
+
+  /// Apply window-specific configuration settings
+  private func applyWindowConfig(_ config: WindowConfig, to window: VeloxRuntimeWry.Window) {
+    // Position
+    if let x = config.x, let y = config.y {
+      window.setPosition(x: x, y: y)
+    }
+
+    // Size constraints
+    if let minWidth = config.minWidth, let minHeight = config.minHeight {
+      window.setMinimumSize(width: minWidth, height: minHeight)
+    }
+    if let maxWidth = config.maxWidth, let maxHeight = config.maxHeight {
+      window.setMaximumSize(width: maxWidth, height: maxHeight)
+    }
+
+    // Window state
+    if let resizable = config.resizable {
+      window.setResizable(resizable)
+    }
+    if let decorations = config.decorations {
+      window.setDecorations(decorations)
+    }
+    if let maximized = config.maximized, maximized {
+      window.setMaximized(true)
+    }
+    if let minimized = config.minimized, minimized {
+      window.setMinimized(true)
+    }
+    if let fullscreen = config.fullscreen, fullscreen {
+      window.setFullscreen(true)
+    }
+
+    // Always on top/bottom
+    if let alwaysOnTop = config.alwaysOnTop {
+      window.setAlwaysOnTop(alwaysOnTop)
+    }
+    if let alwaysOnBottom = config.alwaysOnBottom {
+      window.setAlwaysOnBottom(alwaysOnBottom)
+    }
+
+    // Focusable
+    if let focusable = config.focusable {
+      window.setFocusable(focusable)
+    }
+
+    // Buttons
+    if let maximizable = config.maximizable {
+      window.setMaximizable(maximizable)
+    }
+    if let minimizable = config.minimizable {
+      window.setMinimizable(minimizable)
+    }
+    if let closable = config.closable {
+      window.setClosable(closable)
+    }
+
+    // Visibility options
+    if let skipTaskbar = config.skipTaskbar {
+      window.setSkipTaskbar(skipTaskbar)
+    }
+    if let contentProtected = config.contentProtected {
+      window.setContentProtected(contentProtected)
+    }
+    if let visibleOnAllWorkspaces = config.visibleOnAllWorkspaces {
+      window.setVisibleOnAllWorkspaces(visibleOnAllWorkspaces)
+    }
+
+    // Theme
+    if let theme = config.theme {
+      switch theme {
+      case .light:
+        window.setTheme(.light)
+      case .dark:
+        window.setTheme(.dark)
+      case .system:
+        // System theme - don't set, let OS decide
+        break
+      }
+    }
+
+    // Background color
+    if let colorHex = config.backgroundColor {
+      if let color = parseColor(colorHex) {
+        window.setBackgroundColor(color)
+      }
+    }
+
+    // Visibility and focus (apply last)
+    if let visible = config.visible, visible {
+      window.setVisible(true)
+    }
+    if let focus = config.focus, focus {
+      window.focus()
+    }
+  }
+
+  /// Parse a hex color string like "#RRGGBB" or "#RRGGBBAA"
+  private func parseColor(_ hex: String) -> VeloxRuntimeWry.Window.Color? {
+    var hexString = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+    if hexString.hasPrefix("#") {
+      hexString.removeFirst()
+    }
+
+    guard hexString.count == 6 || hexString.count == 8 else {
+      return nil
+    }
+
+    var rgb: UInt64 = 0
+    guard Scanner(string: hexString).scanHexInt64(&rgb) else {
+      return nil
+    }
+
+    if hexString.count == 6 {
+      return VeloxRuntimeWry.Window.Color(
+        red: Double((rgb >> 16) & 0xFF) / 255.0,
+        green: Double((rgb >> 8) & 0xFF) / 255.0,
+        blue: Double(rgb & 0xFF) / 255.0,
+        alpha: 1.0
+      )
+    } else {
+      return VeloxRuntimeWry.Window.Color(
+        red: Double((rgb >> 24) & 0xFF) / 255.0,
+        green: Double((rgb >> 16) & 0xFF) / 255.0,
+        blue: Double((rgb >> 8) & 0xFF) / 255.0,
+        alpha: Double(rgb & 0xFF) / 255.0
+      )
+    }
+  }
+}
+
+// MARK: - Window Extensions for Config
+
+public extension VeloxRuntimeWry.Window {
+  /// Create a webview from a WindowConfig
+  func makeWebview(
+    from config: WindowConfig,
+    customProtocols: [VeloxRuntimeWry.CustomProtocol] = []
+  ) -> VeloxRuntimeWry.Webview? {
+    let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
+      url: config.url ?? "",
+      customProtocols: customProtocols,
+      isChild: config.isChild ?? false,
+      x: config.x ?? 0,
+      y: config.y ?? 0,
+      width: config.effectiveWidth,
+      height: config.effectiveHeight
+    )
+
+    return makeWebview(configuration: webviewConfig)
+  }
+}
+
+// MARK: - App Builder
+
+/// Helper class for building a Velox app from configuration
+public final class VeloxAppBuilder {
+  private let config: VeloxConfig
+  private var protocolHandlers: [String: VeloxRuntimeWry.CustomProtocol] = [:]
+  private var windowSetupHandlers: [String: (VeloxRuntimeWry.Window, VeloxRuntimeWry.Webview?) -> Void] = [:]
+
+  /// Initialize with a VeloxConfig
+  public init(config: VeloxConfig) {
+    self.config = config
+  }
+
+  /// Load config from the default location (velox.json in current directory)
+  public convenience init() throws {
+    let config = try VeloxConfig.load()
+    self.init(config: config)
+  }
+
+  /// Load config from a specific directory
+  public convenience init(directory: URL) throws {
+    let config = try VeloxConfig.load(from: directory)
+    self.init(config: config)
+  }
+
+  /// Register a custom protocol handler
+  @discardableResult
+  public func registerProtocol(
+    _ scheme: String,
+    handler: @escaping @Sendable (VeloxRuntimeWry.CustomProtocol.Request) -> VeloxRuntimeWry.CustomProtocol.Response?
+  ) -> Self {
+    protocolHandlers[scheme] = VeloxRuntimeWry.CustomProtocol(scheme: scheme, handler: handler)
+    return self
+  }
+
+  /// Register a setup handler for a specific window
+  @discardableResult
+  public func onWindowCreated(
+    _ label: String,
+    handler: @escaping (VeloxRuntimeWry.Window, VeloxRuntimeWry.Webview?) -> Void
+  ) -> Self {
+    windowSetupHandlers[label] = handler
+    return self
+  }
+
+  /// Build the app, creating all configured windows and webviews
+  public func build(
+    eventLoop: VeloxRuntimeWry.EventLoop
+  ) -> [String: (window: VeloxRuntimeWry.Window, webview: VeloxRuntimeWry.Webview?)] {
+    var result: [String: (window: VeloxRuntimeWry.Window, webview: VeloxRuntimeWry.Webview?)] = [:]
+
+    // Apply macOS settings
+    #if os(macOS)
+    if let macOS = config.app.macOS {
+      if let policy = macOS.activationPolicy {
+        switch policy {
+        case .regular: eventLoop.setActivationPolicy(.regular)
+        case .accessory: eventLoop.setActivationPolicy(.accessory)
+        case .prohibited: eventLoop.setActivationPolicy(.prohibited)
+        }
+      }
+    }
+    #endif
+
+    // Create windows
+    for windowConfig in config.app.windows where windowConfig.shouldCreate {
+      guard let window = eventLoop.makeWindow(from: windowConfig) else {
+        print("[VeloxAppBuilder] Failed to create window: \(windowConfig.label)")
+        continue
+      }
+
+      // Create webview if URL is specified
+      var webview: VeloxRuntimeWry.Webview?
+      if windowConfig.url != nil {
+        // Collect protocols for this window
+        var protocols: [VeloxRuntimeWry.CustomProtocol] = []
+        if let schemeNames = windowConfig.customProtocols {
+          for name in schemeNames {
+            if let proto = protocolHandlers[name] {
+              protocols.append(proto)
+            }
+          }
+        }
+        // Also add any protocol matching common schemes
+        for (scheme, proto) in protocolHandlers {
+          if windowConfig.url?.hasPrefix("\(scheme)://") == true && !protocols.contains(where: { $0.scheme == scheme }) {
+            protocols.append(proto)
+          }
+        }
+
+        webview = window.makeWebview(from: windowConfig, customProtocols: protocols)
+        webview?.show()
+      }
+
+      // Apply visibility
+      if windowConfig.visible ?? true {
+        window.setVisible(true)
+      }
+      if windowConfig.focus ?? false {
+        window.focus()
+      }
+
+      // Call setup handler
+      if let handler = windowSetupHandlers[windowConfig.label] {
+        handler(window, webview)
+      }
+
+      result[windowConfig.label] = (window, webview)
+    }
+
+    return result
+  }
+}
