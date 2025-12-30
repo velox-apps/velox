@@ -59,6 +59,10 @@ let package = Package(
     .executable(
       name: "MultiWebView",
       targets: ["MultiWebView"]
+    ),
+    .executable(
+      name: "DynamicHTML",
+      targets: ["DynamicHTML"]
     )
   ],
   targets: [
@@ -151,6 +155,11 @@ let package = Package(
       name: "MultiWebView",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/MultiWebView"
+    ),
+    .executableTarget(
+      name: "DynamicHTML",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/DynamicHTML"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",

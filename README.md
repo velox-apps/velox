@@ -109,6 +109,7 @@ swift run Commands
 swift run Resources
 swift run WindowControls
 swift run MultiWebView
+swift run DynamicHTML
 ```
 
 ### Asset Loading Approaches
@@ -214,6 +215,7 @@ let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
 | **Resources** | Resource bundling and path resolution | Bundled assets |
 | **WindowControls** | Comprehensive window/webview API demonstration | Self-contained |
 | **MultiWebView** | Multiple child webviews: local app + GitHub, tauri.app, Twitter | Mixed |
+| **DynamicHTML** | Swift-rendered dynamic HTML with counter, todos, and themes | Self-contained |
 
 ### IPC Communication
 
