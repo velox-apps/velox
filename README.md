@@ -222,6 +222,61 @@ let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
 | **MultiWebView** | Multiple child webviews: local app + GitHub, tauri.app, Twitter | Mixed |
 | **DynamicHTML** | Swift-rendered dynamic HTML with counter, todos, and themes | Self-contained |
 
+### Configuration (velox.json)
+
+Velox supports a configuration file (`velox.json`) similar to Tauri's `tauri.conf.json`. This allows declarative app configuration:
+
+```json
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "MyApp",
+  "version": "1.0.0",
+  "identifier": "com.example.myapp",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "My Application",
+        "width": 800,
+        "height": 600,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "resizable": true,
+        "customProtocols": ["app", "ipc"]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  },
+  "build": {
+    "frontendDist": "assets"
+  }
+}
+```
+
+Use `VeloxAppBuilder` to create your app from configuration:
+
+```swift
+import VeloxRuntime
+import VeloxRuntimeWry
+
+let config = try VeloxConfig.load(from: URL(fileURLWithPath: "path/to/app"))
+let eventLoop = VeloxRuntimeWry.EventLoop()!
+
+let app = VeloxAppBuilder(config: config)
+  .registerProtocol("app") { request in
+    // Serve assets
+  }
+  .registerProtocol("ipc") { request in
+    // Handle IPC commands
+  }
+  .build(eventLoop: eventLoop)
+```
+
+**Platform-Specific Overrides**: Create `velox.macos.json`, `velox.ios.json`, etc. to override settings per platform using RFC 7396 JSON Merge Patch.
+
 ### IPC Communication
 
 Both approaches use custom protocols for IPC between Swift and the webview:

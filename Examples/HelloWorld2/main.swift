@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+// HelloWorld2 - Demonstrates config-driven app with bundled assets
+// Configuration is loaded from velox.json
+
 import Foundation
+import VeloxRuntime
 import VeloxRuntimeWry
 
 // MARK: - Asset Bundle
@@ -11,21 +15,22 @@ import VeloxRuntimeWry
 struct AssetBundle {
   let basePath: String
 
-  init() {
-    // Find assets directory relative to executable
+  init(frontendDist: String? = nil) {
+    // Find assets directory relative to executable or config
     let executablePath = CommandLine.arguments[0]
     let executableDir = (executablePath as NSString).deletingLastPathComponent
+    let configuredPath = frontendDist ?? "assets"
 
     // Try several possible locations for assets
     let possiblePaths = [
       // Development: relative to executable in .build/debug
-      (executableDir as NSString).appendingPathComponent("../../Examples/HelloWorld2/assets"),
+      (executableDir as NSString).appendingPathComponent("../../Examples/HelloWorld2/\(configuredPath)"),
       // Development: relative to current working directory
-      "Examples/HelloWorld2/assets",
+      "Examples/HelloWorld2/\(configuredPath)",
       // Bundled: in Resources directory (for app bundles)
-      Bundle.main.resourcePath.map { ($0 as NSString).appendingPathComponent("assets") } ?? "",
+      Bundle.main.resourcePath.map { ($0 as NSString).appendingPathComponent(configuredPath) } ?? "",
       // Bundled: next to executable
-      (executableDir as NSString).appendingPathComponent("assets")
+      (executableDir as NSString).appendingPathComponent(configuredPath)
     ]
 
     for path in possiblePaths {
@@ -38,7 +43,7 @@ struct AssetBundle {
     }
 
     // Fallback to current directory
-    basePath = FileManager.default.currentDirectoryPath + "/Examples/HelloWorld2/assets"
+    basePath = FileManager.default.currentDirectoryPath + "/Examples/HelloWorld2/\(configuredPath)"
     print("[Assets] Using fallback path: \(basePath)")
   }
 
@@ -46,44 +51,28 @@ struct AssetBundle {
   func mimeType(for path: String) -> String {
     let ext = (path as NSString).pathExtension.lowercased()
     switch ext {
-    case "html", "htm":
-      return "text/html"
-    case "css":
-      return "text/css"
-    case "js":
-      return "application/javascript"
-    case "json":
-      return "application/json"
-    case "png":
-      return "image/png"
-    case "jpg", "jpeg":
-      return "image/jpeg"
-    case "gif":
-      return "image/gif"
-    case "svg":
-      return "image/svg+xml"
-    case "ico":
-      return "image/x-icon"
-    case "woff":
-      return "font/woff"
-    case "woff2":
-      return "font/woff2"
-    case "ttf":
-      return "font/ttf"
-    default:
-      return "application/octet-stream"
+    case "html", "htm": return "text/html"
+    case "css": return "text/css"
+    case "js": return "application/javascript"
+    case "json": return "application/json"
+    case "png": return "image/png"
+    case "jpg", "jpeg": return "image/jpeg"
+    case "gif": return "image/gif"
+    case "svg": return "image/svg+xml"
+    case "ico": return "image/x-icon"
+    case "woff": return "font/woff"
+    case "woff2": return "font/woff2"
+    case "ttf": return "font/ttf"
+    default: return "application/octet-stream"
     }
   }
 
   /// Load asset from bundle
   func loadAsset(path: String) -> (data: Data, mimeType: String)? {
-    // Normalize path (remove leading slash)
     var normalizedPath = path
     if normalizedPath.hasPrefix("/") {
       normalizedPath = String(normalizedPath.dropFirst())
     }
-
-    // Default to index.html for root path
     if normalizedPath.isEmpty {
       normalizedPath = "index.html"
     }
@@ -103,12 +92,10 @@ struct AssetBundle {
 
 // MARK: - Command Handler
 
-/// Handles the "greet" command from the webview
 func greet(name: String) -> String {
   "Hello \(name), You have been greeted from Swift!"
 }
 
-/// Parse invoke request and route to command handlers
 func handleInvoke(request: VeloxRuntimeWry.CustomProtocol.Request) -> VeloxRuntimeWry.CustomProtocol.Response? {
   guard let url = URL(string: request.url) else {
     return errorResponse(message: "Invalid URL")
@@ -161,76 +148,80 @@ func main() {
     fatalError("HelloWorld2 must run on the main thread")
   }
 
-  // Initialize asset bundle
-  let assets = AssetBundle()
+  // Load configuration from velox.json
+  let config: VeloxConfig
+  do {
+    // Try loading from Examples/HelloWorld2 directory
+    let exampleDir = URL(fileURLWithPath: "Examples/HelloWorld2")
+    config = try VeloxConfig.load(from: exampleDir)
+    print("[Config] Loaded: \(config.productName ?? "Unknown") v\(config.version ?? "?")")
+  } catch {
+    print("[Config] Failed to load velox.json: \(error)")
+    print("[Config] Using default configuration")
+    config = VeloxConfig(
+      productName: "HelloWorld2",
+      version: "1.0.0",
+      identifier: "com.velox.helloworld2",
+      app: AppConfig(windows: [
+        WindowConfig(
+          label: "main",
+          url: "app://localhost/",
+          title: "Welcome to Velox! (Bundled Assets)",
+          width: 800,
+          height: 600
+        )
+      ])
+    )
+  }
+
+  // Initialize asset bundle using frontendDist from config
+  let assets = AssetBundle(frontendDist: config.build?.frontendDist)
 
   guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
     fatalError("Failed to create event loop")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
+  // Build app using VeloxAppBuilder
+  let appBuilder = VeloxAppBuilder(config: config)
+    .registerProtocol("ipc") { request in
+      handleInvoke(request: request)
+    }
+    .registerProtocol("app") { request in
+      guard let url = URL(string: request.url) else {
+        return VeloxRuntimeWry.CustomProtocol.Response(
+          status: 400,
+          headers: ["Content-Type": "text/plain"],
+          body: Data("Invalid URL".utf8)
+        )
+      }
 
-  // IPC protocol for commands
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
-    handleInvoke(request: request)
-  }
+      if let asset = assets.loadAsset(path: url.path) {
+        return VeloxRuntimeWry.CustomProtocol.Response(
+          status: 200,
+          headers: ["Content-Type": asset.mimeType],
+          mimeType: asset.mimeType,
+          body: asset.data
+        )
+      }
 
-  // App protocol serves bundled assets
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
-    guard let url = URL(string: request.url) else {
       return VeloxRuntimeWry.CustomProtocol.Response(
-        status: 400,
+        status: 404,
         headers: ["Content-Type": "text/plain"],
-        body: Data("Invalid URL".utf8)
+        body: Data("Asset not found: \(url.path)".utf8)
       )
     }
 
-    // Load asset from bundle
-    if let asset = assets.loadAsset(path: url.path) {
-      return VeloxRuntimeWry.CustomProtocol.Response(
-        status: 200,
-        headers: ["Content-Type": asset.mimeType],
-        mimeType: asset.mimeType,
-        body: asset.data
-      )
-    }
+  let windows = appBuilder.build(eventLoop: eventLoop)
 
-    // 404 Not Found
-    return VeloxRuntimeWry.CustomProtocol.Response(
-      status: 404,
-      headers: ["Content-Type": "text/plain"],
-      body: Data("Asset not found: \(url.path)".utf8)
-    )
+  guard !windows.isEmpty else {
+    fatalError("No windows were created")
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 800,
-    height: 600,
-    title: "Welcome to Velox! (Bundled Assets)"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
   #if os(macOS)
   eventLoop.showApplication()
   #endif
+
+  print("[App] Created \(windows.count) window(s)")
 
   // Run event loop
   final class AppState: @unchecked Sendable {
