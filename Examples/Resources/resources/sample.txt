@@ -1,0 +1,5 @@
+This is a sample text resource file.
+It can contain any text content that your application needs.
+
+Line 3: Resources can be read at runtime.
+Line 4: They are bundled with the application.

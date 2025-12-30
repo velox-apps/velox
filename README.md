@@ -85,6 +85,31 @@ The Swift API now includes helpers to:
 
 Velox now ships a nascent `VeloxRuntime` module that defines the Swift-first protocols mirroring Tauri's runtime traits. `VeloxRuntimeWry.Runtime` remains a stub while the native implementation is completed; the event-loop based APIs remain the primary entry point until the dedicated Swift runtime is feature-complete.
 
+## Examples
+
+The repository includes several example applications demonstrating Velox capabilities. Examples are located in the `Examples/` directory.
+
+### Running Examples
+
+Build and run any example using Swift Package Manager:
+
+```bash
+# Build all examples
+swift build
+
+# Run a specific example
+swift run HelloWorld
+swift run HelloWorld2
+swift run MultiWindow
+swift run State
+swift run Splashscreen
+swift run Streaming
+swift run RunReturn
+swift run Commands
+swift run Resources
+swift run WindowControls
+```
+
 ### Asset Loading Approaches
 
 Velox supports two approaches for loading web content, mirroring Tauri's flexibility:
@@ -184,6 +209,9 @@ let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
 | **Splashscreen** | Splash window before main window | Self-contained |
 | **Streaming** | Server-sent events from Swift to webview | Self-contained |
 | **RunReturn** | Manual event loop control | Self-contained |
+| **Commands** | Various IPC command patterns (sync, async, fallible, stateful) | Self-contained |
+| **Resources** | Resource bundling and path resolution | Bundled assets |
+| **WindowControls** | Comprehensive window/webview API demonstration | Self-contained |
 
 ### IPC Communication
 

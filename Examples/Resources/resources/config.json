@@ -1,0 +1,10 @@
+{
+  "appName": "Velox Resources Example",
+  "version": "1.0.0",
+  "settings": {
+    "theme": "light",
+    "language": "en",
+    "debugMode": false
+  },
+  "features": ["resource-loading", "path-resolution", "file-reading"]
+}

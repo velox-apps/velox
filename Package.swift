@@ -43,6 +43,18 @@ let package = Package(
     .executable(
       name: "HelloWorld2",
       targets: ["HelloWorld2"]
+    ),
+    .executable(
+      name: "Commands",
+      targets: ["Commands"]
+    ),
+    .executable(
+      name: "Resources",
+      targets: ["Resources"]
+    ),
+    .executable(
+      name: "WindowControls",
+      targets: ["WindowControls"]
     )
   ],
   targets: [
@@ -115,6 +127,21 @@ let package = Package(
       name: "HelloWorld2",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/HelloWorld2"
+    ),
+    .executableTarget(
+      name: "Commands",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Commands"
+    ),
+    .executableTarget(
+      name: "Resources",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Resources"
+    ),
+    .executableTarget(
+      name: "WindowControls",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/WindowControls"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",
