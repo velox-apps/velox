@@ -190,10 +190,33 @@ public enum VeloxRuntimeWry {
   public struct WebviewConfiguration: Sendable {
     public var url: String
     public var customProtocols: [CustomProtocol]
+    /// If true, create as a child webview with specific bounds instead of filling the window.
+    public var isChild: Bool
+    /// X position for child webview (logical pixels).
+    public var x: Double
+    /// Y position for child webview (logical pixels).
+    public var y: Double
+    /// Width for child webview (logical pixels).
+    public var width: Double
+    /// Height for child webview (logical pixels).
+    public var height: Double
 
-    public init(url: String = "", customProtocols: [CustomProtocol] = []) {
+    public init(
+      url: String = "",
+      customProtocols: [CustomProtocol] = [],
+      isChild: Bool = false,
+      x: Double = 0,
+      y: Double = 0,
+      width: Double = 0,
+      height: Double = 0
+    ) {
       self.url = url
       self.customProtocols = customProtocols
+      self.isChild = isChild
+      self.x = x
+      self.y = y
+      self.width = width
+      self.height = height
     }
   }
 
@@ -1443,7 +1466,12 @@ public extension VeloxRuntimeWry {
       return withOptionalCString(configuration.url) { urlPointer in
         var native = VeloxWebviewConfig(
           url: urlPointer,
-          custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0)
+          custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0),
+          is_child: configuration.isChild,
+          x: configuration.x,
+          y: configuration.y,
+          width: configuration.width,
+          height: configuration.height
         )
 
         return definitions.withUnsafeBufferPointer { buffer in
@@ -1856,6 +1884,12 @@ public extension VeloxRuntimeWry {
     @discardableResult
     public func clearBrowsingData() -> Bool {
       velox_webview_clear_browsing_data(raw)
+    }
+
+    /// Set the bounds of a child webview.
+    @discardableResult
+    public func setBounds(x: Double, y: Double, width: Double, height: Double) -> Bool {
+      velox_webview_set_bounds(raw, x, y, width, height)
     }
   }
 }

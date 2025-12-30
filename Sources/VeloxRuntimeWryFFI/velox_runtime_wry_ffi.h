@@ -203,6 +203,16 @@ typedef struct VeloxCustomProtocolList {
 typedef struct {
   const char *url;
   VeloxCustomProtocolList custom_protocols;
+  /// If true, create as a child webview with bounds
+  bool is_child;
+  /// X position for child webview (logical pixels)
+  double x;
+  /// Y position for child webview (logical pixels)
+  double y;
+  /// Width for child webview (logical pixels)
+  double width;
+  /// Height for child webview (logical pixels)
+  double height;
 } VeloxWebviewConfig;
 
 typedef struct {
@@ -351,6 +361,13 @@ bool velox_webview_set_zoom(VeloxWebviewHandle *webview, double scale_factor);
 bool velox_webview_show(VeloxWebviewHandle *webview);
 bool velox_webview_hide(VeloxWebviewHandle *webview);
 bool velox_webview_clear_browsing_data(VeloxWebviewHandle *webview);
+bool velox_webview_set_bounds(
+  VeloxWebviewHandle *webview,
+  double x,
+  double y,
+  double width,
+  double height
+);
 
 VeloxTrayHandle *velox_tray_new(const VeloxTrayConfig *config);
 void velox_tray_free(VeloxTrayHandle *handle);

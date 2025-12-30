@@ -55,6 +55,10 @@ let package = Package(
     .executable(
       name: "WindowControls",
       targets: ["WindowControls"]
+    ),
+    .executable(
+      name: "MultiWebView",
+      targets: ["MultiWebView"]
     )
   ],
   targets: [
@@ -142,6 +146,11 @@ let package = Package(
       name: "WindowControls",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/WindowControls"
+    ),
+    .executableTarget(
+      name: "MultiWebView",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/MultiWebView"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",

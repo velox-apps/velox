@@ -39,7 +39,7 @@ use wry::{
         header::{HeaderName, HeaderValue, CONTENT_TYPE},
         Response as WryHttpResponse, StatusCode,
     },
-    WebView, WebViewBuilder,
+    Rect, WebView, WebViewBuilder,
 };
 
 static LIBRARY_NAME: OnceLock<CString> = OnceLock::new();
@@ -306,6 +306,16 @@ pub struct VeloxWindowConfig {
 pub struct VeloxWebviewConfig {
     pub url: *const c_char,
     pub custom_protocols: VeloxCustomProtocolList,
+    /// If true, create as a child webview with bounds
+    pub is_child: bool,
+    /// X position for child webview (logical pixels)
+    pub x: f64,
+    /// Y position for child webview (logical pixels)
+    pub y: f64,
+    /// Width for child webview (logical pixels)
+    pub width: f64,
+    /// Height for child webview (logical pixels)
+    pub height: f64,
 }
 
 #[repr(C)]
@@ -2637,10 +2647,23 @@ pub extern "C" fn velox_webview_build(
             );
         }
 
-        builder
-            .build(w)
-            .ok()
-            .map(|webview| Box::into_raw(Box::new(VeloxWebviewHandle { webview })))
+        // Build as child webview if requested, otherwise as full-window webview
+        if cfg.is_child {
+            let bounds = Rect {
+                position: LogicalPosition::new(cfg.x, cfg.y).into(),
+                size: LogicalSize::new(cfg.width, cfg.height).into(),
+            };
+            builder = builder.with_bounds(bounds);
+            builder
+                .build_as_child(w)
+                .ok()
+                .map(|webview| Box::into_raw(Box::new(VeloxWebviewHandle { webview })))
+        } else {
+            builder
+                .build(w)
+                .ok()
+                .map(|webview| Box::into_raw(Box::new(VeloxWebviewHandle { webview })))
+        }
     })
     .flatten()
     .unwrap_or(ptr::null_mut())
@@ -2704,6 +2727,25 @@ pub extern "C" fn velox_webview_hide(webview: *mut VeloxWebviewHandle) -> bool {
 #[no_mangle]
 pub extern "C" fn velox_webview_clear_browsing_data(webview: *mut VeloxWebviewHandle) -> bool {
     with_webview(webview, |view| view.clear_all_browsing_data().is_ok()).unwrap_or(false)
+}
+
+/// Set the bounds of a child webview
+#[no_mangle]
+pub extern "C" fn velox_webview_set_bounds(
+    webview: *mut VeloxWebviewHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> bool {
+    with_webview(webview, |view| {
+        let bounds = Rect {
+            position: LogicalPosition::new(x, y).into(),
+            size: LogicalSize::new(width, height).into(),
+        };
+        view.set_bounds(bounds).is_ok()
+    })
+    .unwrap_or(false)
 }
 
 #[derive(Serialize)]
