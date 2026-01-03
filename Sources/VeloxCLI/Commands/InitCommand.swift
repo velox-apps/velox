@@ -1,11 +1,7 @@
 import ArgumentParser
 import Darwin
 import Foundation
-
-/// Log with immediate output
-private func log(_ message: String) {
-  fputs(message + "\n", stderr)
-}
+import Logging
 
 struct InitCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
@@ -22,9 +18,13 @@ struct InitCommand: AsyncParsableCommand {
   @Flag(name: .shortAndLong, help: "Overwrite existing files")
   var force: Bool = false
 
+  @Flag(name: .shortAndLong, help: "Enable verbose logging")
+  var verbose: Bool = false
+
   func run() async throws {
-    log("Velox Init")
-    log("==========")
+    configureLogger(verbose: verbose)
+    logger.info("Velox Init")
+    logger.info("==========")
 
     let currentDir = FileManager.default.currentDirectoryPath
     let dirName = URL(fileURLWithPath: currentDir).lastPathComponent
@@ -42,7 +42,7 @@ struct InitCommand: AsyncParsableCommand {
     }
 
     // Create velox.json
-    log("[init] Creating velox.json...")
+    logger.info("[init] Creating velox.json...")
     let veloxJson = createVeloxJson(
       productName: productName,
       identifier: appIdentifier
@@ -55,7 +55,7 @@ struct InitCommand: AsyncParsableCommand {
 
     if !hasPackageSwift {
       // Create a new Swift package
-      log("[init] Creating Package.swift...")
+      logger.info("[init] Creating Package.swift...")
       let packageSwift = createPackageSwift(productName: productName)
       try packageSwift.write(toFile: packageSwiftPath, atomically: true, encoding: .utf8)
 
@@ -68,7 +68,7 @@ struct InitCommand: AsyncParsableCommand {
 
       let mainSwiftPath = "\(sourcesDir)/main.swift"
       if !FileManager.default.fileExists(atPath: mainSwiftPath) || force {
-        log("[init] Creating main.swift...")
+        logger.info("[init] Creating main.swift...")
         let mainSwift = createMainSwift(productName: productName)
         try mainSwift.write(toFile: mainSwiftPath, atomically: true, encoding: .utf8)
       }
@@ -77,26 +77,26 @@ struct InitCommand: AsyncParsableCommand {
       let assetsDir = "\(currentDir)/assets"
       if !FileManager.default.fileExists(atPath: assetsDir) {
         try FileManager.default.createDirectory(atPath: assetsDir, withIntermediateDirectories: true)
-        log("[init] Created assets/ directory")
+        logger.info("[init] Created assets/ directory")
 
         // Create basic index.html
         let indexHtml = createIndexHtml(productName: productName)
         try indexHtml.write(toFile: "\(assetsDir)/index.html", atomically: true, encoding: .utf8)
-        log("[init] Created assets/index.html")
+        logger.info("[init] Created assets/index.html")
       }
     } else {
-      log("[init] Package.swift already exists - updating dependencies may be needed")
-      log("[init] Add Velox dependency to your Package.swift:")
-      log("       .package(url: \"https://github.com/aspect-build/aspect-cli.git\", from: \"5.0.0\")")
+      logger.info("[init] Package.swift already exists - updating dependencies may be needed")
+      logger.info("[init] Add Velox dependency to your Package.swift:")
+      logger.info("       .package(url: \"https://github.com/aspect-build/aspect-cli.git\", from: \"5.0.0\")")
     }
 
-    log("")
-    log("[done] Velox initialized!")
-    log("")
-    log("Next steps:")
-    log("  1. Run 'swift build' to build the project")
-    log("  2. Run 'velox dev' to start development")
-    log("  3. Run 'velox build --bundle' to create an app bundle")
+    logger.info("")
+    logger.info("[done] Velox initialized!")
+    logger.info("")
+    logger.info("Next steps:")
+    logger.info("  1. Run 'swift build' to build the project")
+    logger.info("  2. Run 'velox dev' to start development")
+    logger.info("  3. Run 'velox build --bundle' to create an app bundle")
   }
 
   private func sanitizeIdentifier(_ name: String) -> String {
@@ -190,6 +190,54 @@ struct InitCommand: AsyncParsableCommand {
       import Foundation
       import VeloxRuntime
       import VeloxRuntimeWry
+
+      // MARK: - Dev Server Proxy
+
+      /// Proxies requests to a dev server (e.g., Vite) when VELOX_DEV_URL is set
+      struct DevServerProxy {
+        let baseURL: URL
+
+        init?(devUrl: String) {
+          guard let url = URL(string: devUrl) else { return nil }
+          self.baseURL = url
+        }
+
+        func fetch(path: String) -> (data: Data, mimeType: String, status: Int)? {
+          var normalizedPath = path
+          if !normalizedPath.hasPrefix("/") {
+            normalizedPath = "/" + normalizedPath
+          }
+          if normalizedPath == "/" {
+            normalizedPath = "/index.html"
+          }
+
+          guard let requestURL = URL(string: normalizedPath, relativeTo: baseURL) else {
+            return nil
+          }
+
+          var request = URLRequest(url: requestURL)
+          request.timeoutInterval = 5
+
+          let semaphore = DispatchSemaphore(value: 0)
+          var result: (data: Data, mimeType: String, status: Int)?
+
+          let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { semaphore.signal() }
+            guard error == nil,
+                  let data = data,
+                  let httpResponse = response as? HTTPURLResponse else {
+              return
+            }
+
+            let mimeType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream"
+            result = (data, mimeType.components(separatedBy: ";").first ?? mimeType, httpResponse.statusCode)
+          }
+          task.resume()
+          semaphore.wait()
+
+          return result
+        }
+      }
 
       // MARK: - Asset Bundle
 
@@ -306,7 +354,18 @@ struct InitCommand: AsyncParsableCommand {
           fatalError("Failed to load velox.json: \\(error)")
         }
 
-        // Initialize assets
+        // Check for dev server proxy mode
+        let devProxy: DevServerProxy?
+        if let devUrl = ProcessInfo.processInfo.environment["VELOX_DEV_URL"] {
+          devProxy = DevServerProxy(devUrl: devUrl)
+          if devProxy != nil {
+            print("[velox] Dev server proxy enabled: \\(devUrl)")
+          }
+        } else {
+          devProxy = nil
+        }
+
+        // Initialize assets for production mode
         let assets = AssetBundle()
 
         guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
@@ -327,6 +386,25 @@ struct InitCommand: AsyncParsableCommand {
               )
             }
 
+            // In dev mode, proxy to dev server
+            if let proxy = devProxy {
+              if let result = proxy.fetch(path: url.path) {
+                return VeloxRuntimeWry.CustomProtocol.Response(
+                  status: result.status,
+                  headers: ["Content-Type": result.mimeType, "Access-Control-Allow-Origin": "*"],
+                  mimeType: result.mimeType,
+                  body: result.data
+                )
+              }
+              // Dev server request failed, return error
+              return VeloxRuntimeWry.CustomProtocol.Response(
+                status: 502,
+                headers: ["Content-Type": "text/plain"],
+                body: Data("Failed to proxy: \\(url.path)".utf8)
+              )
+            }
+
+            // Production mode: serve from local assets
             if let asset = assets.loadAsset(path: url.path) {
               return VeloxRuntimeWry.CustomProtocol.Response(
                 status: 200,

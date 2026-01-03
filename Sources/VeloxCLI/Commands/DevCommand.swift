@@ -1,12 +1,78 @@
 import ArgumentParser
 import Darwin
 import Foundation
+import Logging
 import VeloxRuntime
 
-/// Log with immediate flush to ensure output appears before subprocess output
-private func log(_ message: String) {
-  // Write to stderr for immediate output (unbuffered)
-  fputs(message + "\n", stderr)
+/// Result of running app with file watching
+enum WatchResult {
+  case fileChanged(FileChangeResult)
+  case appExited
+}
+
+/// Runs the app and file watcher concurrently, returns when either completes
+func runWithFileWatching(
+  processManager: ProcessManager,
+  fileWatcher: FileWatcher,
+  target: String,
+  release: Bool,
+  devUrl: String?,
+  packageDirectory: URL,
+  additionalEnv: [String: String],
+  needsRebuild: Bool
+) async throws -> WatchResult {
+  logger.debug("runWithFileWatching called, needsRebuild=\(needsRebuild)")
+  // Use a task group to race between app running and file changes
+  return try await withThrowingTaskGroup(of: WatchResult.self) { group in
+    // Task 1: Run the app
+    group.addTask {
+      logger.debug("App task starting")
+      if needsRebuild {
+        try await processManager.runSwiftApp(
+          target: target,
+          release: release,
+          devUrl: devUrl,
+          packageDirectory: packageDirectory,
+          additionalEnv: additionalEnv
+        )
+      } else {
+        try await processManager.restartSwiftApp(
+          target: target,
+          release: release,
+          devUrl: devUrl,
+          packageDirectory: packageDirectory,
+          additionalEnv: additionalEnv
+        )
+      }
+      logger.debug("App task completed (app exited)")
+      return .appExited
+    }
+
+    // Task 2: Watch for file changes
+    group.addTask {
+      logger.debug("File watcher task starting")
+      let changes = await fileWatcher.waitForChange()
+      logger.debug("File watcher task completed with changes")
+      return .fileChanged(changes)
+    }
+
+    // Return whichever completes first
+    logger.debug("Waiting for first task to complete...")
+    let result = try await group.next()!
+    logger.debug("Got result: \(result)")
+
+    // If file changed, terminate app BEFORE cancelling (otherwise task group deadlocks)
+    if case .fileChanged = result {
+      logger.debug("Terminating app before cancelling tasks...")
+      await processManager.terminateApp()
+    }
+
+    // Cancel the other task
+    group.cancelAll()
+    logger.debug("Cancelled other tasks")
+
+    return result
+  }
 }
 
 struct DevCommand: AsyncParsableCommand {
@@ -24,26 +90,36 @@ struct DevCommand: AsyncParsableCommand {
   @Flag(name: .long, help: "Disable file watching")
   var noWatch: Bool = false
 
+  @Flag(name: .shortAndLong, help: "Enable verbose logging")
+  var verbose: Bool = false
+
   @Argument(help: "Executable target to run (auto-detected if omitted)")
   var target: String?
 
   func run() async throws {
-    log("Velox Dev")
-    log("=========")
+    configureLogger(verbose: verbose)
+    logger.info("Velox Dev")
+    logger.info("=========")
 
     // 1. Load configuration
     let config: VeloxConfig
     do {
       config = try VeloxConfig.load()
-      log("[config] Loaded velox.json")
+      logger.info("[config] Loaded velox.json")
     } catch {
       throw ValidationError("No velox.json found. Run from project root.\n\(error)")
     }
 
+    // 1.5. Load environment variables
+    let envVars = EnvLoader.load(config: config, mode: release ? "production" : "development")
+    if !envVars.isEmpty {
+      logger.info("[env] Loaded \(envVars.count) environment variable(s)")
+    }
+
     // 2. Detect or validate target
     let (executableTarget, packageDirectory) = try resolveTarget()
-    log("[target] Using executable: \(executableTarget)")
-    log("[package] Package directory: \(packageDirectory.path)")
+    logger.info("[target] Using executable: \(executableTarget)")
+    logger.info("[package] Package directory: \(packageDirectory.path)")
 
     // 3. Set up process manager
     let processManager = ProcessManager()
@@ -53,7 +129,7 @@ struct DevCommand: AsyncParsableCommand {
 
     // 4. Run beforeDevCommand if configured
     if let beforeDevCommand = config.build?.beforeDevCommand {
-      log("[hook] Running beforeDevCommand: \(beforeDevCommand)")
+      logger.info("[hook] Running beforeDevCommand: \(beforeDevCommand)")
       try await processManager.spawnBackgroundProcess(
         command: beforeDevCommand,
         label: "beforeDevCommand"
@@ -64,70 +140,136 @@ struct DevCommand: AsyncParsableCommand {
 
     // 5. Wait for dev server if devUrl is configured
     if let devUrl = effectiveDevUrl(from: config) {
-      log("[server] Waiting for dev server at \(devUrl)...")
+      logger.info("[server] Waiting for dev server at \(devUrl)...")
       let checker = DevServerChecker(url: devUrl)
       let available = await checker.waitUntilAvailable(timeout: 60, retryInterval: 1)
       if !available {
         throw ValidationError("Dev server not responding at \(devUrl) after 60 seconds")
       }
-      log("[server] Dev server is ready")
+      logger.info("[server] Dev server is ready")
     }
 
     // 6. Start file watcher (unless disabled)
     var fileWatcher: FileWatcher?
     if !noWatch {
-      fileWatcher = FileWatcher(paths: ["Sources", "velox.json"])
+      var watchPaths = ["Sources", "velox.json"]
+
+      // Also watch frontend files if not using external dev server
+      if effectiveDevUrl(from: config) == nil {
+        if let frontendDist = config.build?.frontendDist {
+          watchPaths.append(frontendDist)
+          logger.info("[watch] Watching frontend files in \(frontendDist)/")
+        }
+      }
+
+      fileWatcher = FileWatcher(paths: watchPaths)
     }
 
     // 7. Build and run loop
     var shouldExit = false
+    var needsRebuild = true  // First run always builds
+    let devUrl = effectiveDevUrl(from: config)
+
     while !shouldExit {
       do {
-        log("[build] Building and running \(executableTarget)...")
-        let devUrl = effectiveDevUrl(from: config)
-        try await processManager.runSwiftApp(
-          target: executableTarget,
-          release: release,
-          devUrl: devUrl,
-          packageDirectory: packageDirectory
-        )
+        if needsRebuild {
+          logger.info("[build] Building and running \(executableTarget)...")
+        } else {
+          logger.info("[restart] Restarting \(executableTarget) (frontend-only changes)...")
+        }
 
-        // App exited normally, check if we should restart
+        // Run app and file watcher concurrently
         if noWatch {
+          // No watching - just run the app and exit when it's done
+          if needsRebuild {
+            try await processManager.runSwiftApp(
+              target: executableTarget,
+              release: release,
+              devUrl: devUrl,
+              packageDirectory: packageDirectory,
+              additionalEnv: envVars
+            )
+          } else {
+            try await processManager.restartSwiftApp(
+              target: executableTarget,
+              release: release,
+              devUrl: devUrl,
+              packageDirectory: packageDirectory,
+              additionalEnv: envVars
+            )
+          }
           shouldExit = true
         } else {
-          log("[watch] App exited. Waiting for file changes...")
-          await fileWatcher?.waitForChange()
-          log("[watch] Changes detected, rebuilding...")
+          // Watch mode - run app and file watcher concurrently
+          let result = try await runWithFileWatching(
+            processManager: processManager,
+            fileWatcher: fileWatcher!,
+            target: executableTarget,
+            release: release,
+            devUrl: devUrl,
+            packageDirectory: packageDirectory,
+            additionalEnv: envVars,
+            needsRebuild: needsRebuild
+          )
+
+          switch result {
+          case .fileChanged(let changes):
+            // File changed while app was running - app already terminated in task group
+            logger.debug("Processing file change result...")
+            if changes.isFrontendOnly {
+              logger.info("[watch] Frontend changes detected, restarting...")
+              needsRebuild = false
+            } else {
+              if changes.hasBackendChanges {
+                logger.info("[watch] Backend changes detected, rebuilding...")
+              } else if changes.hasConfigChanges {
+                logger.info("[watch] Config changes detected, rebuilding...")
+              }
+              needsRebuild = true
+            }
+            logger.debug("Looping back to rebuild/restart...")
+          case .appExited:
+            // App exited on its own - wait for file changes
+            logger.info("[watch] App exited. Waiting for file changes...")
+            if let changes = await fileWatcher?.waitForChange() {
+              if changes.isFrontendOnly {
+                logger.info("[watch] Frontend changes detected, restarting...")
+                needsRebuild = false
+              } else {
+                needsRebuild = true
+              }
+            }
+          }
         }
       } catch let error as ProcessManager.ProcessError {
         switch error {
         case .buildFailed(let output):
-          log("[error] Build failed:\n\(output)")
+          logger.error("[error] Build failed:\n\(output)")
           if noWatch {
             throw error
           }
-          log("[watch] Waiting for file changes to retry...")
-          await fileWatcher?.waitForChange()
-          log("[watch] Changes detected, rebuilding...")
+          logger.info("[watch] Waiting for file changes to retry...")
+          _ = await fileWatcher?.waitForChange()
+          needsRebuild = true  // Always rebuild after build failure
         case .terminated:
-          // Process was killed (likely by us), continue loop
+          // Process was killed (likely by us for file change), continue loop
           break
         case .runtimeError(let output):
-          log("[error] Runtime error:\n\(output)")
+          logger.error("[error] Runtime error:\n\(output)")
           if noWatch {
             throw error
           }
-          log("[watch] Waiting for file changes to restart...")
-          await fileWatcher?.waitForChange()
-          log("[watch] Changes detected, rebuilding...")
+          logger.info("[watch] Waiting for file changes to restart...")
+          if let changes = await fileWatcher?.waitForChange() {
+            needsRebuild = !changes.isFrontendOnly
+          }
         }
       }
     }
 
     // Cleanup
     await processManager.terminateAll()
-    log("[done] Velox dev stopped")
+    logger.info("[done] Velox dev stopped")
   }
 
   private func resolveTarget() throws -> (target: String, packageDirectory: URL) {
@@ -166,27 +308,35 @@ struct DevCommand: AsyncParsableCommand {
     return config.build?.devUrl
   }
 
+  // Store signal sources to prevent deallocation
+  private static var signalSources: [DispatchSourceSignal] = []
+
   private func setupSignalHandlers(processManager: ProcessManager) {
-    let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+    // Use global queue instead of main - main run loop may not be running in async context
+    let signalQueue = DispatchQueue(label: "com.velox.signals")
+
+    let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: signalQueue)
     signal(SIGINT, SIG_IGN)
     signalSource.setEventHandler {
-      log("\n[shutdown] Received SIGINT, cleaning up...")
+      logger.info("\n[shutdown] Received SIGINT, cleaning up...")
       Task {
         await processManager.terminateAll()
         Darwin.exit(0)
       }
     }
     signalSource.resume()
+    DevCommand.signalSources.append(signalSource)
 
-    let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+    let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: signalQueue)
     signal(SIGTERM, SIG_IGN)
     termSource.setEventHandler {
-      log("\n[shutdown] Received SIGTERM, cleaning up...")
+      logger.info("\n[shutdown] Received SIGTERM, cleaning up...")
       Task {
         await processManager.terminateAll()
         Darwin.exit(0)
       }
     }
     termSource.resume()
+    DevCommand.signalSources.append(termSource)
   }
 }

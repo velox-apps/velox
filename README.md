@@ -90,8 +90,10 @@ velox dev --port 3000
 Features:
 - Executes `beforeDevCommand` from velox.json (e.g., `npm run dev`)
 - Waits for dev server at `devUrl` if configured
-- Builds and runs the Swift app
+- Builds and runs the Swift app with `VELOX_DEV_URL` set
+- **Dev server proxy**: When `devUrl` is set, the `app://` protocol proxies requests to your dev server, enabling HMR from tools like Vite
 - Watches for Swift file changes and rebuilds automatically
+- **Smart reload**: Frontend-only changes trigger a quick restart without rebuild
 - Graceful shutdown with Ctrl+C
 
 #### `velox build` - Production Build
@@ -139,17 +141,138 @@ The CLI uses settings from `velox.json`:
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "dist"
+    "beforeBundleCommand": "npm run prepare-bundle",
+    "frontendDist": "dist",
+    "env": {
+      "API_URL": "https://api.example.com",
+      "DEBUG": "true"
+    }
   }
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `devUrl` | Dev server URL; set as `VELOX_DEV_URL` env var |
+| `devUrl` | Dev server URL; enables proxy mode (see below) |
 | `beforeDevCommand` | Command to run before `velox dev` (e.g., start Vite) |
 | `beforeBuildCommand` | Command to run before `velox build` (e.g., build frontend) |
+| `beforeBundleCommand` | Command to run before creating app bundle |
 | `frontendDist` | Directory containing frontend assets for bundling |
+| `env` | Environment variables to inject into build and dev processes |
+
+### Environment Variables
+
+Velox supports environment variable injection from multiple sources:
+
+1. **`.env`** - Base environment file
+2. **`.env.development`** or **`.env.production`** - Mode-specific overrides
+3. **`.env.local`** - Local overrides (gitignored)
+4. **`velox.json` build.env** - Configuration-defined variables
+
+Priority (highest to lowest): system env > velox.json > .env.local > .env.[mode] > .env
+
+Example `.env` file:
+```
+API_URL=https://api.example.com
+DEBUG=true
+# Comments are supported
+MULTILINE="line1\nline2"
+```
+
+### Frontend Development Modes
+
+Velox offers two approaches for serving frontend assets during development. Choose based on your project's complexity and tooling preferences.
+
+#### Option 1: Local Asset Serving (Simple Projects)
+
+**When to use:** Static HTML/CSS/JS without a build step, simple projects, or when you want the fastest possible reload cycle.
+
+```json
+{
+  "build": {
+    "frontendDist": "assets"
+  }
+}
+```
+
+**How it works:**
+- `velox dev` serves files directly from the `frontendDist` directory (e.g., `assets/`)
+- File watcher monitors both Swift sources AND frontend files
+- When you edit `index.html`, `styles.css`, or `app.js`, the app restarts instantly (no rebuild)
+- Swift file changes trigger a full rebuild
+
+**Pros:**
+- Zero configuration - just put HTML files in `assets/`
+- No Node.js or npm required
+- Fastest restart for simple frontend changes
+- Great for prototyping and learning
+
+**Cons:**
+- No transpilation (TypeScript, JSX, etc.)
+- No module bundling
+- No Hot Module Replacement (page fully reloads)
+- Manual browser refresh via app restart
+
+#### Option 2: Dev Server Proxy (Modern Web Tooling)
+
+**When to use:** Projects using Vite, webpack, or other modern frontend toolchains that provide HMR.
+
+```json
+{
+  "build": {
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "frontendDist": "dist"
+  }
+}
+```
+
+**How it works:**
+1. `beforeDevCommand` starts your frontend dev server (e.g., Vite)
+2. Velox waits for `devUrl` to respond before launching the app
+3. The `VELOX_DEV_URL` environment variable is passed to your Swift app
+4. The `app://` protocol proxies all requests to the dev server
+5. File watcher only monitors Swift sources (frontend HMR is handled by Vite)
+
+**Pros:**
+- **Hot Module Replacement (HMR)** - instant updates without page reload
+- Full modern toolchain support (TypeScript, React, Vue, Tailwind, etc.)
+- Source maps for debugging
+- Consistent `app://` protocol between dev and production
+- CORS-free development
+
+**Cons:**
+- Requires Node.js and npm
+- More configuration
+- Slightly slower initial startup (waiting for dev server)
+
+#### Comparison Table
+
+| Feature | Local Assets | Dev Server Proxy |
+|---------|-------------|------------------|
+| Setup complexity | Minimal | Requires npm project |
+| Frontend tooling | None (vanilla JS) | Full (Vite, webpack, etc.) |
+| TypeScript/JSX | Not supported | Fully supported |
+| Hot Module Replacement | No (app restart) | Yes (instant) |
+| Page reload on change | Full restart | Partial/none (HMR) |
+| Swift change handling | Rebuild + restart | Rebuild + restart |
+| Production build | Copy files | Run build command |
+
+#### Switching Between Modes
+
+To switch from proxy mode to local asset serving, simply remove or comment out `devUrl`:
+
+```json
+{
+  "build": {
+    // "devUrl": "http://localhost:5173",  // Commented out = local mode
+    // "beforeDevCommand": "npm run dev",   // Not needed without devUrl
+    "frontendDist": "assets"
+  }
+}
+```
+
+The same `frontendDist` directory is used for both development (local mode) and production builds.
 
 ## Examples
 

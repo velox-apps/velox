@@ -291,16 +291,26 @@ public struct BuildConfig: Codable, Sendable {
   /// Command to run before build
   public var beforeBuildCommand: String?
 
+  /// Command to run before bundle creation
+  public var beforeBundleCommand: String?
+
+  /// Environment variables to inject
+  public var env: [String: String]?
+
   public init(
     devUrl: String? = nil,
     frontendDist: String? = nil,
     beforeDevCommand: String? = nil,
-    beforeBuildCommand: String? = nil
+    beforeBuildCommand: String? = nil,
+    beforeBundleCommand: String? = nil,
+    env: [String: String]? = nil
   ) {
     self.devUrl = devUrl
     self.frontendDist = frontendDist
     self.beforeDevCommand = beforeDevCommand
     self.beforeBuildCommand = beforeBuildCommand
+    self.beforeBundleCommand = beforeBundleCommand
+    self.env = env
   }
 }
 

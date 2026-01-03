@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 actor ProcessManager {
   enum ProcessError: Error {
@@ -55,12 +56,13 @@ actor ProcessManager {
     target: String,
     release: Bool,
     devUrl: String?,
-    packageDirectory: URL? = nil
+    packageDirectory: URL? = nil,
+    additionalEnv: [String: String] = [:]
   ) async throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
 
-    var args = ["run"]
+    var args = ["run", "--disable-sandbox"]
     if release {
       args.append("-c")
       args.append("release")
@@ -72,8 +74,14 @@ actor ProcessManager {
     let workingDir = packageDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     process.currentDirectoryURL = workingDir
 
-    // Set environment with VELOX_DEV_URL and VELOX_CONFIG_DIR
+    // Set environment with VELOX_DEV_URL, VELOX_CONFIG_DIR, and additional env vars
     var env = ProcessInfo.processInfo.environment
+
+    // Merge additional environment variables first
+    for (key, value) in additionalEnv {
+      env[key] = value
+    }
+
     if let devUrl = devUrl {
       env["VELOX_DEV_URL"] = devUrl
     }
@@ -105,16 +113,20 @@ actor ProcessManager {
       let data = handle.availableData
       if !data.isEmpty {
         errorData.append(data)
-        if let str = String(data: data, encoding: .utf8) {
-          FileHandle.standardError.write(data)
-        }
+        FileHandle.standardError.write(data)
       }
     }
 
     currentAppProcess = process
 
     try process.run()
-    process.waitUntilExit()
+
+    // Wait for process to exit asynchronously (non-blocking)
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      process.terminationHandler = { _ in
+        continuation.resume()
+      }
+    }
 
     // Clean up handlers
     outputPipe.fileHandleForReading.readabilityHandler = nil
@@ -139,6 +151,103 @@ actor ProcessManager {
     }
   }
 
+  /// Runs the already-built Swift app without rebuilding (faster for frontend-only changes)
+  func restartSwiftApp(
+    target: String,
+    release: Bool,
+    devUrl: String?,
+    packageDirectory: URL? = nil,
+    additionalEnv: [String: String] = [:]
+  ) async throws {
+    let workingDir = packageDirectory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let config = release ? "release" : "debug"
+    let executablePath = workingDir
+      .appendingPathComponent(".build")
+      .appendingPathComponent(config)
+      .appendingPathComponent(target)
+
+    // Check if executable exists
+    guard FileManager.default.fileExists(atPath: executablePath.path) else {
+      // Fall back to full build if executable doesn't exist
+      try await runSwiftApp(
+        target: target,
+        release: release,
+        devUrl: devUrl,
+        packageDirectory: packageDirectory,
+        additionalEnv: additionalEnv
+      )
+      return
+    }
+
+    let process = Process()
+    process.executableURL = executablePath
+    process.currentDirectoryURL = workingDir
+
+    // Set environment
+    var env = ProcessInfo.processInfo.environment
+    for (key, value) in additionalEnv {
+      env[key] = value
+    }
+    if let devUrl = devUrl {
+      env["VELOX_DEV_URL"] = devUrl
+    }
+    env["VELOX_CONFIG_DIR"] = FileManager.default.currentDirectoryPath
+    process.environment = env
+
+    // Capture output
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    process.standardOutput = outputPipe
+    process.standardError = errorPipe
+
+    var errorData = Data()
+
+    // Forward output in real-time
+    outputPipe.fileHandleForReading.readabilityHandler = { handle in
+      let data = handle.availableData
+      if !data.isEmpty {
+        if let str = String(data: data, encoding: .utf8) {
+          print(str, terminator: "")
+        }
+      }
+    }
+
+    errorPipe.fileHandleForReading.readabilityHandler = { handle in
+      let data = handle.availableData
+      if !data.isEmpty {
+        errorData.append(data)
+        FileHandle.standardError.write(data)
+      }
+    }
+
+    currentAppProcess = process
+
+    try process.run()
+
+    // Wait for process to exit asynchronously (non-blocking)
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      process.terminationHandler = { _ in
+        continuation.resume()
+      }
+    }
+
+    // Clean up handlers
+    outputPipe.fileHandleForReading.readabilityHandler = nil
+    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+    currentAppProcess = nil
+
+    // Check if terminated by signal (we killed it)
+    if process.terminationReason == .uncaughtSignal {
+      throw ProcessError.terminated
+    }
+
+    if process.terminationStatus != 0 {
+      let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
+      throw ProcessError.runtimeError(errorOutput)
+    }
+  }
+
   /// Terminates the currently running app process
   func terminateApp() {
     guard let process = currentAppProcess, process.isRunning else { return }
@@ -159,7 +268,7 @@ actor ProcessManager {
     // Then terminate background processes
     for (label, process) in backgroundProcesses {
       if process.isRunning {
-        print("[shutdown] Terminating \(label)...")
+        logger.info("[shutdown] Terminating \(label)...")
         process.terminate()
       }
     }
