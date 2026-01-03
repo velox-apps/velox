@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Velox Commands (Registry DSL)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Commands Demo <span class="badge">Registry DSL</span></h1>
+  <p class="subtitle">Type-safe commands with automatic JSON decoding</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Greet Command</h2>
+      <input type="text" id="greet-name" placeholder="Enter your name">
+      <button onclick="greet()">Greet</button>
+      <div class="result" id="greet-result">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Add Command</h2>
+      <div class="row">
+        <input type="number" id="add-a" placeholder="A" value="10">
+        <input type="number" id="add-b" placeholder="B" value="5">
+      </div>
+      <button onclick="add()">Add Numbers</button>
+      <div class="result" id="add-result">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Divide Command (Can Fail)</h2>
+      <div class="row">
+        <input type="number" id="div-num" placeholder="Numerator" value="10">
+        <input type="number" id="div-den" placeholder="Denominator" value="2">
+      </div>
+      <button onclick="divide()">Divide</button>
+      <div class="result" id="div-result">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Person Command</h2>
+      <input type="text" id="person-name" placeholder="Name" value="Alice">
+      <input type="number" id="person-age" placeholder="Age" value="25">
+      <input type="email" id="person-email" placeholder="Email (optional)">
+      <button onclick="person()">Greet Person</button>
+      <div class="result" id="person-result">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Stateful Counter</h2>
+      <button onclick="increment()">Increment Counter</button>
+      <button onclick="getCounter()" class="secondary">Get Counter</button>
+      <div class="result" id="counter-result">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Ping Command</h2>
+      <button onclick="ping()">Ping Server</button>
+      <div class="result" id="ping-result">-</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

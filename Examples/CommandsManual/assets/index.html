@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Velox Commands (Manual)</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <h1>Velox Commands <span class="badge">Manual</span></h1>
+    <p>This example demonstrates various IPC command patterns using manual routing.</p>
+
+    <div class="response-box" id="response">Click a button to run a command...</div>
+
+    <h3>Simple Commands</h3>
+    <div class="button-group">
+      <button onclick="runCommand('simple_command', {theArgument: 'Hello!'})">Simple Command</button>
+      <button onclick="runCommand('echo', {theArgument: 'Echo this!'})">Echo</button>
+    </div>
+
+    <h3>Fallible Commands (Result)</h3>
+    <div class="button-group">
+      <button onclick="runCommand('fallible_command', {theArgument: 'valid'})">Fallible (Valid)</button>
+      <button onclick="runCommand('fallible_command', {theArgument: ''})">Fallible (Empty - Error)</button>
+    </div>
+
+    <h3>Stateful Commands</h3>
+    <div class="button-group">
+      <button onclick="runCommand('stateful_command', {theArgument: 'test'})">Read State</button>
+      <button onclick="runCommand('increment', {})">Increment Counter</button>
+    </div>
+
+    <h3>Complex Arguments</h3>
+    <div class="button-group">
+      <button onclick="runCommand('person_command', {person: {name: 'Ferris', age: 6}})">Person Struct</button>
+      <button onclick="runCommand('sum_command', {numbers: [1, 2, 3, 4, 5]})">Sum Array</button>
+    </div>
+
+    <h3>Async-style Commands</h3>
+    <div class="button-group">
+      <button onclick="runCommand('async_command', {theArgument: 'async data'})">Async Command</button>
+      <button onclick="runCommand('raw_data_command', {})">Raw Data</button>
+    </div>
+
+    <h3>Error Handling</h3>
+    <div class="button-group">
+      <button onclick="runCommand('unknown_command', {})">Unknown Command</button>
+      <button onclick="runCommand('person_command', {person: 'invalid'})">Invalid Arguments</button>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,16 +1,21 @@
 // swift-tools-version: 5.9
 import PackageDescription
+import CompilerPluginSupport
 
 let package = Package(
   name: "VeloxRuntimeWry",
   platforms: [
-    .macOS(.v12),
-    .iOS(.v15)
+    .macOS(.v13),
+    .iOS(.v16)
   ],
   products: [
     .library(
       name: "VeloxRuntime",
       targets: ["VeloxRuntime"]
+    ),
+    .library(
+      name: "VeloxMacros",
+      targets: ["VeloxMacros"]
     ),
     .library(
       name: "VeloxRuntimeWry",
@@ -45,8 +50,8 @@ let package = Package(
       targets: ["HelloWorld2"]
     ),
     .executable(
-      name: "Commands",
-      targets: ["Commands"]
+      name: "CommandsManual",
+      targets: ["CommandsManual"]
     ),
     .executable(
       name: "Resources",
@@ -71,9 +76,37 @@ let package = Package(
     .executable(
       name: "Tray",
       targets: ["Tray"]
+    ),
+    .executable(
+      name: "CommandsManualRegistry",
+      targets: ["CommandsManualRegistry"]
+    ),
+    .executable(
+      name: "Commands",
+      targets: ["Commands"]
     )
   ],
+  dependencies: [
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
+  ],
   targets: [
+    // Macro implementation (compiler plugin)
+    .macro(
+      name: "VeloxMacrosImpl",
+      dependencies: [
+        .product(name: "SwiftSyntax", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+        .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxBuilder", package: "swift-syntax")
+      ],
+      path: "Sources/VeloxMacrosImpl"
+    ),
+    // Macro declarations (client-facing)
+    .target(
+      name: "VeloxMacros",
+      dependencies: ["VeloxMacrosImpl", "VeloxRuntime"],
+      path: "Sources/VeloxMacros"
+    ),
     .target(
       name: "VeloxRuntime",
       path: "Sources/VeloxRuntime"
@@ -145,9 +178,9 @@ let package = Package(
       path: "Examples/HelloWorld2"
     ),
     .executableTarget(
-      name: "Commands",
+      name: "CommandsManual",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Commands"
+      path: "Examples/CommandsManual"
     ),
     .executableTarget(
       name: "Resources",
@@ -178,6 +211,16 @@ let package = Package(
       name: "Tray",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/Tray"
+    ),
+    .executableTarget(
+      name: "CommandsManualRegistry",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/CommandsManualRegistry"
+    ),
+    .executableTarget(
+      name: "Commands",
+      dependencies: ["VeloxRuntimeWry", "VeloxMacros"],
+      path: "Examples/Commands"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",
