@@ -1,4 +1,4 @@
-// Velox Commands3 - Frontend JavaScript
+// Velox Commands - Frontend JavaScript
 
 async function invoke(command, args = {}) {
   const response = await fetch('ipc://localhost/' + command, {
@@ -63,4 +63,4 @@ async function ping() {
   showResult('ping-result', result);
 }
 
-console.log('Commands3 loaded - using @VeloxCommand macro');
+console.log('Commands loaded - using @VeloxCommand macro');
