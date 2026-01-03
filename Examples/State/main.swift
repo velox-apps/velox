@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+// State - Demonstrates Velox state management using StateContainer
+// State is registered with manage() and accessed via state<T>()
+
 import Foundation
+import VeloxRuntime
 import VeloxRuntimeWry
 
 // MARK: - Application State
@@ -40,34 +44,60 @@ final class Counter: @unchecked Sendable {
   }
 }
 
+/// Additional state to demonstrate multiple managed states
+final class AppInfo: @unchecked Sendable {
+  let name: String
+  let version: String
+
+  init(name: String, version: String) {
+    self.name = name
+    self.version = version
+  }
+}
+
 // MARK: - Command Handler
 
-/// Global counter for state management
-let globalCounter = Counter()
+/// Creates an IPC handler with access to managed state
+func createIPCHandler(stateContainer: StateContainer) -> VeloxRuntimeWry.CustomProtocol.Handler {
+  return { request in
+    guard let url = URL(string: request.url) else {
+      return errorResponse(message: "Invalid URL")
+    }
 
-/// Parse invoke request and route to command handlers
-func handleInvoke(request: VeloxRuntimeWry.CustomProtocol.Request) -> VeloxRuntimeWry.CustomProtocol.Response? {
-  guard let url = URL(string: request.url) else {
-    return errorResponse(message: "Invalid URL")
-  }
+    let command = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
-  let command = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    // Access state from the container - this is similar to Tauri's State<T>
+    guard let counter: Counter = stateContainer.get() else {
+      return errorResponse(message: "Counter state not initialized")
+    }
 
-  switch command {
-  case "get":
-    return jsonResponse(["result": globalCounter.get()])
+    switch command {
+    case "get":
+      return jsonResponse(["result": counter.get()])
 
-  case "increment":
-    return jsonResponse(["result": globalCounter.increment()])
+    case "increment":
+      return jsonResponse(["result": counter.increment()])
 
-  case "decrement":
-    return jsonResponse(["result": globalCounter.decrement()])
+    case "decrement":
+      return jsonResponse(["result": counter.decrement()])
 
-  case "reset":
-    return jsonResponse(["result": globalCounter.reset()])
+    case "reset":
+      return jsonResponse(["result": counter.reset()])
 
-  default:
-    return errorResponse(message: "Unknown command: \(command)")
+    case "info":
+      // Access another state type
+      if let appInfo: AppInfo = stateContainer.get() {
+        return jsonResponse([
+          "name": appInfo.name,
+          "version": appInfo.version,
+          "counter": counter.get()
+        ])
+      }
+      return jsonResponse(["counter": counter.get()])
+
+    default:
+      return errorResponse(message: "Unknown command: \(command)")
+    }
   }
 }
 
@@ -151,6 +181,20 @@ let htmlContent = """
         color: #666;
         font-size: 14px;
       }
+      .info {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f5f5f7;
+        border-radius: 8px;
+        text-align: left;
+      }
+      .info h4 {
+        margin: 0 0 10px 0;
+        color: #333;
+      }
+      .info p {
+        margin: 5px 0;
+      }
     </style>
   </head>
   <body>
@@ -160,7 +204,13 @@ let htmlContent = """
       <button id="decrement-btn">-</button>
       <button id="reset-btn">Reset</button>
     </div>
-    <p>State persists while the app is running.</p>
+    <p>State is managed via StateContainer</p>
+
+    <div class="info" id="info" style="display: none;">
+      <h4>App Info (from managed state)</h4>
+      <p>Name: <span id="app-name">-</span></p>
+      <p>Version: <span id="app-version">-</span></p>
+    </div>
 
     <script>
       async function invoke(command, args = {}) {
@@ -171,29 +221,44 @@ let htmlContent = """
         });
         const data = await response.json();
         if (data.error) throw new Error(data.error);
-        return data.result;
+        return data;
       }
 
       const counterEl = document.querySelector('#counter');
       const incrementBtn = document.querySelector('#increment-btn');
       const decrementBtn = document.querySelector('#decrement-btn');
       const resetBtn = document.querySelector('#reset-btn');
+      const infoEl = document.querySelector('#info');
+      const appNameEl = document.querySelector('#app-name');
+      const appVersionEl = document.querySelector('#app-version');
 
-      // Load initial state
+      // Load initial state and app info
       document.addEventListener('DOMContentLoaded', async () => {
-        counterEl.textContent = await invoke('get');
+        const data = await invoke('get');
+        counterEl.textContent = data.result;
+
+        // Load app info from managed state
+        const info = await invoke('info');
+        if (info.name) {
+          appNameEl.textContent = info.name;
+          appVersionEl.textContent = info.version;
+          infoEl.style.display = 'block';
+        }
       });
 
       incrementBtn.addEventListener('click', async () => {
-        counterEl.textContent = await invoke('increment');
+        const data = await invoke('increment');
+        counterEl.textContent = data.result;
       });
 
       decrementBtn.addEventListener('click', async () => {
-        counterEl.textContent = await invoke('decrement');
+        const data = await invoke('decrement');
+        counterEl.textContent = data.result;
       });
 
       resetBtn.addEventListener('click', async () => {
-        counterEl.textContent = await invoke('reset');
+        const data = await invoke('reset');
+        counterEl.textContent = data.result;
       });
     </script>
   </body>
@@ -207,6 +272,13 @@ func main() {
     fatalError("State example must run on the main thread")
   }
 
+  // Create state container and register managed state
+  let stateContainer = StateContainer()
+    .manage(Counter())
+    .manage(AppInfo(name: "Velox State Demo", version: "1.0.0"))
+
+  print("[State] Registered Counter and AppInfo in StateContainer")
+
   guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
     fatalError("Failed to create event loop")
   }
@@ -215,9 +287,9 @@ func main() {
   eventLoop.setActivationPolicy(.regular)
   #endif
 
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
-    handleInvoke(request: request)
-  }
+  // Create IPC handler with access to state container
+  let ipcHandler = createIPCHandler(stateContainer: stateContainer)
+  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
 
   let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
@@ -230,7 +302,7 @@ func main() {
 
   let windowConfig = VeloxRuntimeWry.WindowConfiguration(
     width: 400,
-    height: 300,
+    height: 400,
     title: "Velox State Example"
   )
 
@@ -255,17 +327,19 @@ func main() {
   eventLoop.showApplication()
   #endif
 
-  // Run event loop using run_return pattern
-  final class AppState: @unchecked Sendable {
+  print("[State] Application started")
+
+  // Run event loop
+  final class RunState: @unchecked Sendable {
     var shouldExit = false
   }
-  let state = AppState()
+  let runState = RunState()
 
-  while !state.shouldExit {
+  while !runState.shouldExit {
     eventLoop.pump { event in
       switch event {
       case .windowCloseRequested, .userExit:
-        state.shouldExit = true
+        runState.shouldExit = true
         return .exit
 
       default:
@@ -273,6 +347,8 @@ func main() {
       }
     }
   }
+
+  print("[State] Application exiting")
 }
 
 main()

@@ -63,6 +63,14 @@ let package = Package(
     .executable(
       name: "DynamicHTML",
       targets: ["DynamicHTML"]
+    ),
+    .executable(
+      name: "Events",
+      targets: ["Events"]
+    ),
+    .executable(
+      name: "Tray",
+      targets: ["Tray"]
     )
   ],
   targets: [
@@ -160,6 +168,16 @@ let package = Package(
       name: "DynamicHTML",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/DynamicHTML"
+    ),
+    .executableTarget(
+      name: "Events",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Events"
+    ),
+    .executableTarget(
+      name: "Tray",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Tray"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",

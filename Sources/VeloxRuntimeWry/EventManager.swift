@@ -1,0 +1,244 @@
+// Copyright 2019-2024 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+
+import Foundation
+import VeloxRuntime
+
+// MARK: - Event Manager
+
+/// Manages event emission and listening across webviews
+public final class VeloxEventManager: @unchecked Sendable {
+  /// Registered webviews by label
+  private var webviews: [String: WeakWebview] = [:]
+
+  /// Backend event listeners
+  private var listeners: [String: [(EventListenerHandle, EventCallback)]] = [:]
+
+  /// Lock for thread safety
+  private let lock = NSLock()
+
+  /// Shared instance for global events
+  public static let shared = VeloxEventManager()
+
+  public init() {}
+
+  // MARK: - Webview Registration
+
+  /// Register a webview for receiving events
+  public func register(webview: VeloxRuntimeWry.Webview, label: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    webviews[label] = WeakWebview(webview)
+
+    // Inject the event bridge script
+    webview.evaluate(script: VeloxEventBridge.initScript)
+  }
+
+  /// Unregister a webview
+  public func unregister(label: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    webviews.removeValue(forKey: label)
+  }
+
+  /// Get all registered webview labels
+  public var registeredLabels: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    // Clean up deallocated webviews
+    webviews = webviews.filter { $0.value.webview != nil }
+    return Array(webviews.keys)
+  }
+
+  // MARK: - Event Emission
+
+  /// Emit an event to all registered webviews
+  public func emit<T: Encodable & Sendable>(_ eventName: String, payload: T) throws {
+    try emit(eventName, payload: payload, to: .all)
+  }
+
+  /// Emit an event to a specific target
+  public func emit<T: Encodable & Sendable>(
+    _ eventName: String,
+    payload: T,
+    to target: EventTarget
+  ) throws {
+    let event = VeloxEvent(name: eventName, payload: payload)
+    let anyEvent = try AnyVeloxEvent(from: event)
+    let script = VeloxEventBridge.emitScript(event: anyEvent)
+
+    lock.lock()
+    // Clean up deallocated webviews
+    webviews = webviews.filter { $0.value.webview != nil }
+
+    let targetWebviews: [(String, VeloxRuntimeWry.Webview)]
+    switch target {
+    case .all:
+      targetWebviews = webviews.compactMap { label, weak in
+        weak.webview.map { (label, $0) }
+      }
+
+    case .window(let label), .webview(let label):
+      if let weak = webviews[label], let webview = weak.webview {
+        targetWebviews = [(label, webview)]
+      } else {
+        targetWebviews = []
+      }
+
+    case .filter(let predicate):
+      targetWebviews = webviews.compactMap { label, weak in
+        guard predicate(label), let webview = weak.webview else { return nil }
+        return (label, webview)
+      }
+    }
+    lock.unlock()
+
+    // Emit to all target webviews
+    for (_, webview) in targetWebviews {
+      webview.evaluate(script: script)
+    }
+
+    // Also notify backend listeners
+    notifyListeners(event: anyEvent)
+  }
+
+  /// Emit an event to a specific webview by label
+  public func emitTo<T: Encodable & Sendable>(
+    _ label: String,
+    event eventName: String,
+    payload: T
+  ) throws {
+    try emit(eventName, payload: payload, to: .webview(label))
+  }
+
+  // MARK: - Backend Event Listening
+
+  /// Listen for events emitted from the frontend
+  @discardableResult
+  public func listen(_ eventName: String, handler: @escaping EventCallback) -> EventListenerHandle {
+    lock.lock()
+    defer { lock.unlock() }
+
+    let handle = EventListenerHandle(eventName: eventName)
+    if listeners[eventName] == nil {
+      listeners[eventName] = []
+    }
+    listeners[eventName]?.append((handle, handler))
+    return handle
+  }
+
+  /// Listen for a single event occurrence
+  @discardableResult
+  public func once(_ eventName: String, handler: @escaping EventCallback) -> EventListenerHandle {
+    var handle: EventListenerHandle!
+    handle = listen(eventName) { [weak self] event in
+      handler(event)
+      self?.unlisten(handle)
+    }
+    return handle
+  }
+
+  /// Remove an event listener
+  public func unlisten(_ handle: EventListenerHandle) {
+    lock.lock()
+    defer { lock.unlock() }
+
+    listeners[handle.eventName]?.removeAll { $0.0 == handle }
+    if listeners[handle.eventName]?.isEmpty == true {
+      listeners.removeValue(forKey: handle.eventName)
+    }
+  }
+
+  /// Remove all listeners for an event
+  public func removeAllListeners(for eventName: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    listeners.removeValue(forKey: eventName)
+  }
+
+  // MARK: - Internal
+
+  /// Process an event from the frontend
+  public func handleFrontendEvent(name: String, payloadJSON: String, from label: String) {
+    let event = AnyVeloxEvent(name: name, payloadJSON: payloadJSON)
+    notifyListeners(event: event)
+  }
+
+  private func notifyListeners(event: AnyVeloxEvent) {
+    lock.lock()
+    let handlers = listeners[event.name] ?? []
+    lock.unlock()
+
+    for (_, handler) in handlers {
+      handler(event)
+    }
+  }
+}
+
+// MARK: - Weak Webview Wrapper
+
+private final class WeakWebview: @unchecked Sendable {
+  weak var webview: VeloxRuntimeWry.Webview?
+
+  init(_ webview: VeloxRuntimeWry.Webview) {
+    self.webview = webview
+  }
+}
+
+// MARK: - Protocol Conformance
+
+extension VeloxEventManager: EventEmitter {}
+extension VeloxEventManager: EventListener {}
+
+// MARK: - IPC Handler for Frontend Events
+
+/// Creates an IPC protocol handler for receiving events from the frontend
+public func createEventIPCHandler(
+  manager: VeloxEventManager = .shared
+) -> VeloxRuntimeWry.CustomProtocol.Handler {
+  return { request in
+    guard request.url.contains("__velox_event__") else {
+      return nil
+    }
+
+    // Parse the event from the request body
+    guard !request.body.isEmpty,
+          let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
+          let eventName = json["event"] as? String
+    else {
+      return VeloxRuntimeWry.CustomProtocol.Response(
+        status: 400,
+        headers: ["Content-Type": "application/json"],
+        body: Data("{\"error\":\"Invalid event format\"}".utf8)
+      )
+    }
+
+    // Get payload as JSON string
+    let payloadJSON: String
+    if let payload = json["payload"] {
+      if let data = try? JSONSerialization.data(withJSONObject: payload),
+         let str = String(data: data, encoding: .utf8)
+      {
+        payloadJSON = str
+      } else {
+        payloadJSON = "null"
+      }
+    } else {
+      payloadJSON = "null"
+    }
+
+    // Notify the event manager
+    manager.handleFrontendEvent(
+      name: eventName,
+      payloadJSON: payloadJSON,
+      from: request.webviewIdentifier
+    )
+
+    return VeloxRuntimeWry.CustomProtocol.Response(
+      status: 200,
+      headers: ["Content-Type": "application/json"],
+      body: Data("{\"success\":true}".utf8)
+    )
+  }
+}

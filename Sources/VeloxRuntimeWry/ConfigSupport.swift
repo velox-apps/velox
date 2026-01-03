@@ -218,9 +218,21 @@ public final class VeloxAppBuilder {
   private var protocolHandlers: [String: VeloxRuntimeWry.CustomProtocol] = [:]
   private var windowSetupHandlers: [String: (VeloxRuntimeWry.Window, VeloxRuntimeWry.Webview?) -> Void] = [:]
 
+  /// Event manager for this app
+  public let eventManager: VeloxEventManager
+
+  /// State container for managed application state
+  public let stateContainer: StateContainer
+
   /// Initialize with a VeloxConfig
-  public init(config: VeloxConfig) {
+  public init(
+    config: VeloxConfig,
+    eventManager: VeloxEventManager = VeloxEventManager(),
+    stateContainer: StateContainer = StateContainer()
+  ) {
     self.config = config
+    self.eventManager = eventManager
+    self.stateContainer = stateContainer
   }
 
   /// Load config from the default location (velox.json in current directory)
@@ -233,6 +245,23 @@ public final class VeloxAppBuilder {
   public convenience init(directory: URL) throws {
     let config = try VeloxConfig.load(from: directory)
     self.init(config: config)
+  }
+
+  /// Register managed state
+  @discardableResult
+  public func manage<T>(_ state: T) -> Self {
+    stateContainer.manage(state)
+    return self
+  }
+
+  /// Get managed state of type T
+  public func state<T>() -> T? {
+    stateContainer.get()
+  }
+
+  /// Get managed state of type T, or crash if not registered
+  public func requireState<T>() -> T {
+    stateContainer.require()
   }
 
   /// Register a custom protocol handler
@@ -302,6 +331,11 @@ public final class VeloxAppBuilder {
 
         webview = window.makeWebview(from: windowConfig, customProtocols: protocols)
         webview?.show()
+
+        // Register webview with event manager
+        if let wv = webview {
+          eventManager.register(webview: wv, label: windowConfig.label)
+        }
       }
 
       // Apply visibility

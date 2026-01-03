@@ -115,6 +115,8 @@ swift run Resources
 swift run WindowControls
 swift run MultiWebView
 swift run DynamicHTML
+swift run Events
+swift run Tray
 ```
 
 ### Asset Loading Approaches
@@ -221,6 +223,8 @@ let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
 | **WindowControls** | Comprehensive window/webview API demonstration | Self-contained |
 | **MultiWebView** | Multiple child webviews: local app + GitHub, tauri.app, Twitter | Mixed |
 | **DynamicHTML** | Swift-rendered dynamic HTML with counter, todos, and themes | Self-contained |
+| **Events** | Event system: backend-to-frontend and frontend-to-backend events | Self-contained |
+| **Tray** | System tray icon with context menu (macOS) | Self-contained |
 
 ### Configuration (velox.json)
 
