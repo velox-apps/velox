@@ -327,16 +327,42 @@ public extension VeloxConfig {
 
   /// Load configuration from a directory.
   /// Looks for `velox.json` and merges platform-specific overrides.
+  /// Falls back to checking Bundle.main.resourcePath for app bundles.
   ///
   /// - Parameter directory: Directory containing velox.json (defaults to current directory)
   /// - Returns: Merged configuration
   static func load(from directory: URL? = nil) throws -> VeloxConfig {
-    let dir = directory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-    let baseConfigURL = dir.appendingPathComponent("velox.json")
+    // Build list of directories to search
+    var searchDirs: [URL] = []
 
-    // Load base configuration
-    guard FileManager.default.fileExists(atPath: baseConfigURL.path) else {
-      throw LoadError.fileNotFound(baseConfigURL.path)
+    if let directory = directory {
+      searchDirs.append(directory)
+    } else {
+      // Check current directory first
+      searchDirs.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+
+      // Then check bundle resources (for app bundles)
+      if let resourcePath = Bundle.main.resourcePath {
+        searchDirs.append(URL(fileURLWithPath: resourcePath))
+      }
+    }
+
+    // Find velox.json in one of the search directories
+    var dir: URL?
+    var baseConfigURL: URL?
+
+    for searchDir in searchDirs {
+      let configURL = searchDir.appendingPathComponent("velox.json")
+      if FileManager.default.fileExists(atPath: configURL.path) {
+        dir = searchDir
+        baseConfigURL = configURL
+        break
+      }
+    }
+
+    guard let dir = dir, let baseConfigURL = baseConfigURL else {
+      let searchedPaths = searchDirs.map { $0.appendingPathComponent("velox.json").path }
+      throw LoadError.fileNotFound(searchedPaths.joined(separator: ", "))
     }
 
     let baseData = try Data(contentsOf: baseConfigURL)

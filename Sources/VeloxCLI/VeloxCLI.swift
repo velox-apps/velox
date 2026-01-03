@@ -6,7 +6,7 @@ struct VeloxCLI: AsyncParsableCommand {
     commandName: "velox",
     abstract: "Velox development tools",
     version: "0.1.0",
-    subcommands: [DevCommand.self],
+    subcommands: [DevCommand.self, BuildCommand.self, InitCommand.self],
     defaultSubcommand: DevCommand.self
   )
 }
