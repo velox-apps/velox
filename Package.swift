@@ -84,10 +84,15 @@ let package = Package(
     .executable(
       name: "Commands",
       targets: ["Commands"]
+    ),
+    .executable(
+      name: "velox",
+      targets: ["VeloxCLI"]
     )
   ],
   dependencies: [
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
   ],
   targets: [
     // Macro implementation (compiler plugin)
@@ -221,6 +226,14 @@ let package = Package(
       name: "Commands",
       dependencies: ["VeloxRuntimeWry", "VeloxMacros"],
       path: "Examples/Commands"
+    ),
+    .executableTarget(
+      name: "VeloxCLI",
+      dependencies: [
+        "VeloxRuntime",
+        .product(name: "ArgumentParser", package: "swift-argument-parser")
+      ],
+      path: "Sources/VeloxCLI"
     ),
     .plugin(
       name: "VeloxRustBuildPlugin",
