@@ -86,6 +86,10 @@ let package = Package(
       targets: ["Commands"]
     ),
     .executable(
+      name: "Plugins",
+      targets: ["Plugins"]
+    ),
+    .executable(
       name: "velox",
       targets: ["VeloxCLI"]
     )
@@ -246,6 +250,11 @@ let package = Package(
       resources: [
         .copy("assets")
       ]
+    ),
+    .executableTarget(
+      name: "Plugins",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Plugins"
     ),
     .executableTarget(
       name: "VeloxCLI",

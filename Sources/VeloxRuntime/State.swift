@@ -10,6 +10,7 @@ import Foundation
 /// Similar to Tauri's `tauri::State<T>`.
 public final class StateContainer: @unchecked Sendable {
   private var states: [ObjectIdentifier: Any] = [:]
+  private var keyedStates: [AnyHashable: Any] = [:]
   private let lock = NSLock()
 
   public init() {}
@@ -61,6 +62,42 @@ public final class StateContainer: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     states.removeAll()
+    keyedStates.removeAll()
+  }
+
+  // MARK: - Keyed State Storage (for plugins)
+
+  /// Register state with a custom hashable key.
+  /// Used internally for plugin-scoped state.
+  @discardableResult
+  internal func manageKeyed<K: Hashable, V>(key: K, value: V) -> Self {
+    lock.lock()
+    defer { lock.unlock() }
+    keyedStates[AnyHashable(key)] = value
+    return self
+  }
+
+  /// Get state by custom hashable key.
+  /// Used internally for plugin-scoped state.
+  internal func getKeyed<K: Hashable, V>(key: K) -> V? {
+    lock.lock()
+    defer { lock.unlock() }
+    return keyedStates[AnyHashable(key)] as? V
+  }
+
+  /// Check if keyed state exists.
+  internal func hasKeyed<K: Hashable>(key: K) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return keyedStates[AnyHashable(key)] != nil
+  }
+
+  /// Remove keyed state.
+  @discardableResult
+  internal func removeKeyed<K: Hashable, V>(key: K) -> V? {
+    lock.lock()
+    defer { lock.unlock() }
+    return keyedStates.removeValue(forKey: AnyHashable(key)) as? V
   }
 }
 

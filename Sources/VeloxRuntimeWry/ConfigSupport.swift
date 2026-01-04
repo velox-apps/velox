@@ -214,7 +214,9 @@ public extension VeloxRuntimeWry.Window {
 
 /// Helper class for building a Velox app from configuration
 public final class VeloxAppBuilder {
-  private let config: VeloxConfig
+  /// The app configuration
+  public let config: VeloxConfig
+
   private var protocolHandlers: [String: VeloxRuntimeWry.CustomProtocol] = [:]
   private var windowSetupHandlers: [String: (VeloxRuntimeWry.Window, VeloxRuntimeWry.Webview?) -> Void] = [:]
 
@@ -224,15 +226,20 @@ public final class VeloxAppBuilder {
   /// State container for managed application state
   public let stateContainer: StateContainer
 
+  /// Command registry for this app
+  public let commandRegistry: CommandRegistry
+
   /// Initialize with a VeloxConfig
   public init(
     config: VeloxConfig,
     eventManager: VeloxEventManager = VeloxEventManager(),
-    stateContainer: StateContainer = StateContainer()
+    stateContainer: StateContainer = StateContainer(),
+    commandRegistry: CommandRegistry = CommandRegistry()
   ) {
     self.config = config
     self.eventManager = eventManager
     self.stateContainer = stateContainer
+    self.commandRegistry = commandRegistry
   }
 
   /// Load config from the default location (velox.json in current directory)
@@ -285,10 +292,35 @@ public final class VeloxAppBuilder {
   }
 
   /// Build the app, creating all configured windows and webviews
+  ///
+  /// This method:
+  /// 1. Initializes all registered plugins
+  /// 2. Creates windows and webviews as configured
+  /// 3. Notifies plugins when webviews are ready
+  ///
+  /// - Parameter eventLoop: The event loop to create windows in.
+  /// - Returns: A dictionary mapping window labels to window/webview tuples.
   public func build(
     eventLoop: VeloxRuntimeWry.EventLoop
   ) -> [String: (window: VeloxRuntimeWry.Window, webview: VeloxRuntimeWry.Webview?)] {
     var result: [String: (window: VeloxRuntimeWry.Window, webview: VeloxRuntimeWry.Webview?)] = [:]
+
+    // Setup plugins if any are registered
+    if pluginManager.hasPlugins {
+      let setupContext = PluginSetupContext(
+        stateContainer: stateContainer,
+        commandRegistry: commandRegistry,
+        eventEmitter: eventManager,
+        eventListener: eventManager,
+        config: config
+      )
+
+      do {
+        try pluginManager.setup(context: setupContext)
+      } catch {
+        print("[VeloxAppBuilder] Plugin setup failed: \(error)")
+      }
+    }
 
     // Apply macOS settings
     #if os(macOS)
@@ -335,6 +367,23 @@ public final class VeloxAppBuilder {
         // Register webview with event manager
         if let wv = webview {
           eventManager.register(webview: wv, label: windowConfig.label)
+
+          // Notify plugins that webview is ready
+          if pluginManager.hasPlugins {
+            let webviewHandle = eventManager.getWebviewHandle(windowConfig.label)
+            if let handle = webviewHandle {
+              let readyContext = WebviewReadyContext(
+                label: windowConfig.label,
+                webview: handle,
+                url: URL(string: windowConfig.url ?? "")
+              )
+
+              let initScript = pluginManager.webviewReady(context: readyContext)
+              if !initScript.isEmpty {
+                wv.evaluate(script: initScript)
+              }
+            }
+          }
         }
       }
 
