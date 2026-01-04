@@ -477,6 +477,366 @@ struct CapabilityConfigTests {
   }
 }
 
+// MARK: - Security Configuration Tests
+
+@Suite("SecurityConfig")
+struct SecurityConfigTests {
+
+  @Test("CSP string configuration")
+  func cspStringConfig() throws {
+    let json = """
+      {
+        "csp": "default-src 'self'; script-src 'unsafe-inline'"
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .string(let value) = config.csp else {
+      Issue.record("CSP should be a string")
+      return
+    }
+    #expect(value.contains("default-src"))
+    #expect(config.csp?.buildHeaderValue() == "default-src 'self'; script-src 'unsafe-inline'")
+  }
+
+  @Test("CSP directives configuration")
+  func cspDirectivesConfig() throws {
+    let json = """
+      {
+        "csp": {
+          "default-src": "'self'",
+          "script-src": ["'self'", "'unsafe-inline'"],
+          "img-src": "'self' data: blob:"
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .directives(let directives) = config.csp else {
+      Issue.record("CSP should be directives")
+      return
+    }
+    #expect(directives.count == 3)
+
+    let headerValue = config.csp?.buildHeaderValue() ?? ""
+    #expect(headerValue.contains("default-src 'self'"))
+    #expect(headerValue.contains("script-src 'self' 'unsafe-inline'"))
+  }
+
+  @Test("Asset protocol configuration")
+  func assetProtocolConfig() throws {
+    let json = """
+      {
+        "assetProtocol": {
+          "enable": true,
+          "scope": ["/tmp/*", "$HOME/Documents/*"]
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    #expect(config.assetProtocol?.isEnabled == true)
+    #expect(config.assetProtocol?.scope?.count == 2)
+    #expect(config.assetProtocol?.scope?.first == "/tmp/*")
+  }
+
+  @Test("Asset protocol disabled by default")
+  func assetProtocolDisabledByDefault() throws {
+    let json = """
+      {
+        "assetProtocol": {
+          "scope": ["/tmp/*"]
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    #expect(config.assetProtocol?.isEnabled == false)
+  }
+
+  @Test("Pattern brownfield configuration")
+  func patternBrownfieldConfig() throws {
+    let json = """
+      {
+        "pattern": {
+          "use": "brownfield"
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .brownfield = config.pattern else {
+      Issue.record("Pattern should be brownfield")
+      return
+    }
+  }
+
+  @Test("Pattern isolation configuration")
+  func patternIsolationConfig() throws {
+    let json = """
+      {
+        "pattern": {
+          "use": "isolation",
+          "options": {
+            "dir": "../dist-isolation"
+          }
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .isolation(let isolationConfig) = config.pattern else {
+      Issue.record("Pattern should be isolation")
+      return
+    }
+    #expect(isolationConfig.dir == "../dist-isolation")
+  }
+
+  @Test("Custom headers configuration")
+  func customHeadersConfig() throws {
+    let json = """
+      {
+        "headers": {
+          "X-Frame-Options": "DENY",
+          "X-Content-Type-Options": "nosniff"
+        }
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    #expect(config.headers?["X-Frame-Options"] == "DENY")
+    #expect(config.headers?["X-Content-Type-Options"] == "nosniff")
+  }
+
+  @Test("Dangerous disable CSP modification - all")
+  func dangerousDisableCspAll() throws {
+    let json = """
+      {
+        "dangerousDisableAssetCspModification": true
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .all = config.dangerousDisableAssetCspModification else {
+      Issue.record("Should disable all CSP modifications")
+      return
+    }
+    #expect(config.dangerousDisableAssetCspModification?.shouldDisable(directive: "script-src") == true)
+  }
+
+  @Test("Dangerous disable CSP modification - selective")
+  func dangerousDisableCspSelective() throws {
+    let json = """
+      {
+        "dangerousDisableAssetCspModification": ["script-src", "style-src"]
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    guard case .directives(let directives) = config.dangerousDisableAssetCspModification else {
+      Issue.record("Should have specific directives")
+      return
+    }
+    #expect(directives.count == 2)
+    #expect(config.dangerousDisableAssetCspModification?.shouldDisable(directive: "script-src") == true)
+    #expect(config.dangerousDisableAssetCspModification?.shouldDisable(directive: "img-src") == false)
+  }
+
+  @Test("Freeze prototype configuration")
+  func freezePrototypeConfig() throws {
+    let json = """
+      {
+        "freezePrototype": true
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    #expect(config.freezePrototype == true)
+  }
+
+  @Test("Full security configuration")
+  func fullSecurityConfig() throws {
+    let json = """
+      {
+        "csp": "default-src 'self'",
+        "devCsp": "default-src 'self' 'unsafe-eval'",
+        "freezePrototype": true,
+        "assetProtocol": {
+          "enable": true,
+          "scope": ["/tmp/*"]
+        },
+        "pattern": {
+          "use": "brownfield"
+        },
+        "headers": {
+          "X-Custom": "value"
+        },
+        "dangerousDisableAssetCspModification": false,
+        "capabilities": [
+          {
+            "identifier": "main",
+            "windows": ["main"],
+            "permissions": ["greet"]
+          }
+        ],
+        "defaultAppCommandPolicy": "allow",
+        "defaultPluginCommandPolicy": "deny"
+      }
+      """
+    let data = Data(json.utf8)
+    let config = try JSONDecoder().decode(SecurityConfig.self, from: data)
+
+    #expect(config.csp != nil)
+    #expect(config.devCsp != nil)
+    #expect(config.freezePrototype == true)
+    #expect(config.assetProtocol?.isEnabled == true)
+    #expect(config.headers?["X-Custom"] == "value")
+    #expect(config.capabilities?.count == 1)
+    #expect(config.defaultAppCommandPolicy == .allow)
+    #expect(config.defaultPluginCommandPolicy == .deny)
+  }
+}
+
+// MARK: - CSP Builder Tests
+
+@Suite("CSPBuilder")
+struct CSPBuilderTests {
+
+  @Test("Build CSP from directives")
+  func buildFromDirectives() {
+    var builder = CSPBuilder()
+    builder.set(directive: "default-src", sources: ["'self'"])
+    builder.set(directive: "script-src", sources: ["'self'", "'unsafe-inline'"])
+
+    let result = builder.build()
+    #expect(result.contains("default-src 'self'"))
+    #expect(result.contains("script-src 'self' 'unsafe-inline'"))
+  }
+
+  @Test("Add source to directive")
+  func addSource() {
+    var builder = CSPBuilder()
+    builder.set(directive: "default-src", sources: ["'self'"])
+    builder.add(source: "app:", to: "default-src")
+
+    let sources = builder.get(directive: "default-src")
+    #expect(sources.contains("'self'"))
+    #expect(sources.contains("app:"))
+  }
+
+  @Test("Initialize from CSPConfig string")
+  func initFromString() {
+    let config = CSPConfig.string("default-src 'self'; script-src 'unsafe-inline'")
+    let builder = CSPBuilder(from: config)
+
+    #expect(builder.get(directive: "default-src") == ["'self'"])
+    #expect(builder.get(directive: "script-src") == ["'unsafe-inline'"])
+  }
+
+  @Test("Initialize from CSPConfig directives")
+  func initFromDirectives() {
+    let config = CSPConfig.directives([
+      "default-src": .single("'self'"),
+      "script-src": .multiple(["'self'", "'unsafe-inline'"])
+    ])
+    let builder = CSPBuilder(from: config)
+
+    #expect(builder.get(directive: "default-src") == ["'self'"])
+    #expect(builder.get(directive: "script-src") == ["'self'", "'unsafe-inline'"])
+  }
+
+  @Test("Default CSP has required sources")
+  func defaultCSP() {
+    let builder = CSPBuilder.defaultCSP
+
+    #expect(builder.get(directive: "default-src").contains("'self'"))
+    #expect(builder.get(directive: "connect-src").contains("ipc:"))
+  }
+}
+
+// MARK: - Asset Path Validator Tests
+
+@Suite("AssetPathValidator")
+struct AssetPathValidatorTests {
+
+  @Test("Empty scope denies all")
+  func emptyScopeDeniesAll() {
+    let validator = AssetPathValidator(scope: [])
+    #expect(!validator.isAllowed("/tmp/file.txt"))
+    #expect(!validator.isAllowed("/any/path"))
+  }
+
+  @Test("Glob pattern matches")
+  func globPatternMatches() {
+    let validator = AssetPathValidator(scope: ["/tmp/*"])
+    #expect(validator.isAllowed("/tmp/file.txt"))
+    #expect(validator.isAllowed("/tmp/subdir/file.txt"))
+    #expect(!validator.isAllowed("/etc/passwd"))
+  }
+
+  @Test("Multiple patterns")
+  func multiplePatterns() {
+    let validator = AssetPathValidator(scope: ["/tmp/*", "/var/log/*"])
+    #expect(validator.isAllowed("/tmp/file.txt"))
+    #expect(validator.isAllowed("/var/log/app.log"))
+    #expect(!validator.isAllowed("/etc/passwd"))
+  }
+
+  @Test("Home directory expansion")
+  func homeDirectoryExpansion() {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let validator = AssetPathValidator(scope: ["~/Documents/*"])
+    #expect(validator.isAllowed("\(home)/Documents/file.txt"))
+  }
+}
+
+// MARK: - Security Script Generator Tests
+
+@Suite("SecurityScriptGenerator")
+struct SecurityScriptGeneratorTests {
+
+  @Test("No script when freezePrototype is false")
+  func noScriptWhenDisabled() {
+    let config = SecurityConfig(freezePrototype: false)
+    let script = SecurityScriptGenerator.generateInitScript(config: config)
+    #expect(script.isEmpty)
+  }
+
+  @Test("No script when config is nil")
+  func noScriptWhenNil() {
+    let script = SecurityScriptGenerator.generateInitScript(config: nil)
+    #expect(script.isEmpty)
+  }
+
+  @Test("Generates freeze script when enabled")
+  func generatesScriptWhenEnabled() {
+    let config = SecurityConfig(freezePrototype: true)
+    let script = SecurityScriptGenerator.generateInitScript(config: config)
+    #expect(!script.isEmpty)
+    #expect(script.contains("Object.freeze"))
+    #expect(script.contains("Object.prototype"))
+  }
+
+  @Test("Freeze prototype script freezes all prototypes")
+  func freezePrototypeScriptContent() {
+    let script = SecurityScriptGenerator.freezePrototypeScript
+    #expect(script.contains("Object.freeze(Object.prototype)"))
+    #expect(script.contains("Object.freeze(Array.prototype)"))
+    #expect(script.contains("Object.freeze(Function.prototype)"))
+    #expect(script.contains("Object.freeze(String.prototype)"))
+  }
+}
+
 // MARK: - Helper Extensions
 
 extension Result {

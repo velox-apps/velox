@@ -226,14 +226,28 @@ public enum WindowTheme: String, Codable, Sendable {
 
 /// Security settings for the application
 public struct SecurityConfig: Codable, Sendable {
-  /// Content Security Policy
-  public var csp: String?
+  /// Content Security Policy (string or object with directives)
+  public var csp: CSPConfig?
 
   /// Development-only CSP (overrides csp in dev mode)
-  public var devCsp: String?
+  public var devCsp: CSPConfig?
 
-  /// Whether to freeze the prototype chain
+  /// Whether to freeze the prototype chain when using custom protocols.
+  /// Helps protect against prototype pollution attacks.
   public var freezePrototype: Bool?
+
+  /// Asset protocol configuration for serving local files
+  public var assetProtocol: AssetProtocolConfig?
+
+  /// Security pattern: brownfield (default) or isolation
+  public var pattern: PatternConfig?
+
+  /// Custom HTTP headers to inject into responses
+  public var headers: [String: String]?
+
+  /// Disables Tauri-injected CSP sources.
+  /// Can be `true` to disable all modifications, or a list of directive names to disable selectively.
+  public var dangerousDisableAssetCspModification: CSPModificationConfig?
 
   /// Capabilities configuration - groups of permissions targeting specific windows
   public var capabilities: [CapabilityConfig]?
@@ -248,9 +262,13 @@ public struct SecurityConfig: Codable, Sendable {
   public var defaultPluginCommandPolicy: DefaultPolicy?
 
   public init(
-    csp: String? = nil,
-    devCsp: String? = nil,
+    csp: CSPConfig? = nil,
+    devCsp: CSPConfig? = nil,
     freezePrototype: Bool? = nil,
+    assetProtocol: AssetProtocolConfig? = nil,
+    pattern: PatternConfig? = nil,
+    headers: [String: String]? = nil,
+    dangerousDisableAssetCspModification: CSPModificationConfig? = nil,
     capabilities: [CapabilityConfig]? = nil,
     permissions: [String: PermissionConfig]? = nil,
     defaultAppCommandPolicy: DefaultPolicy? = nil,
@@ -259,10 +277,216 @@ public struct SecurityConfig: Codable, Sendable {
     self.csp = csp
     self.devCsp = devCsp
     self.freezePrototype = freezePrototype
+    self.assetProtocol = assetProtocol
+    self.pattern = pattern
+    self.headers = headers
+    self.dangerousDisableAssetCspModification = dangerousDisableAssetCspModification
     self.capabilities = capabilities
     self.permissions = permissions
     self.defaultAppCommandPolicy = defaultAppCommandPolicy
     self.defaultPluginCommandPolicy = defaultPluginCommandPolicy
+  }
+}
+
+// MARK: - CSP Configuration
+
+/// Content Security Policy configuration.
+/// Can be a simple string or an object with individual directives.
+public enum CSPConfig: Codable, Sendable, Equatable {
+  /// Simple CSP string (e.g., "default-src 'self'")
+  case string(String)
+
+  /// Object with individual CSP directives
+  case directives([String: CSPDirectiveValue])
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let stringValue = try? container.decode(String.self) {
+      self = .string(stringValue)
+    } else {
+      let directives = try container.decode([String: CSPDirectiveValue].self)
+      self = .directives(directives)
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .string(let value):
+      try container.encode(value)
+    case .directives(let directives):
+      try container.encode(directives)
+    }
+  }
+
+  /// Build the CSP header string
+  public func buildHeaderValue() -> String {
+    switch self {
+    case .string(let value):
+      return value
+    case .directives(let directives):
+      return directives.map { key, value in
+        "\(key) \(value.joined())"
+      }.joined(separator: "; ")
+    }
+  }
+}
+
+/// CSP directive value - can be a single string or array of sources
+public enum CSPDirectiveValue: Codable, Sendable, Equatable {
+  case single(String)
+  case multiple([String])
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let stringValue = try? container.decode(String.self) {
+      self = .single(stringValue)
+    } else {
+      let arrayValue = try container.decode([String].self)
+      self = .multiple(arrayValue)
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .single(let value):
+      try container.encode(value)
+    case .multiple(let values):
+      try container.encode(values)
+    }
+  }
+
+  /// Join values into a space-separated string
+  public func joined() -> String {
+    switch self {
+    case .single(let value):
+      return value
+    case .multiple(let values):
+      return values.joined(separator: " ")
+    }
+  }
+}
+
+// MARK: - Asset Protocol Configuration
+
+/// Configuration for the asset:// protocol used to serve local files
+public struct AssetProtocolConfig: Codable, Sendable, Equatable {
+  /// Whether the asset protocol is enabled (default: false)
+  public var enable: Bool?
+
+  /// Allowed paths/patterns for asset access (glob patterns supported)
+  public var scope: [String]?
+
+  public init(enable: Bool? = nil, scope: [String]? = nil) {
+    self.enable = enable
+    self.scope = scope
+  }
+
+  /// Whether asset protocol is enabled
+  public var isEnabled: Bool {
+    enable ?? false
+  }
+}
+
+// MARK: - Pattern Configuration
+
+/// Security pattern configuration
+public enum PatternConfig: Codable, Sendable, Equatable {
+  /// Brownfield pattern - standard webview with direct IPC (default)
+  case brownfield
+
+  /// Isolation pattern - sandboxed iframe intercepts all IPC
+  case isolation(IsolationConfig)
+
+  enum CodingKeys: String, CodingKey {
+    case use
+    case options
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let use = try container.decode(String.self, forKey: .use)
+
+    switch use {
+    case "brownfield":
+      self = .brownfield
+    case "isolation":
+      let options = try container.decode(IsolationConfig.self, forKey: .options)
+      self = .isolation(options)
+    default:
+      throw DecodingError.dataCorruptedError(
+        forKey: .use,
+        in: container,
+        debugDescription: "Unknown pattern: \(use). Expected 'brownfield' or 'isolation'."
+      )
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .brownfield:
+      try container.encode("brownfield", forKey: .use)
+    case .isolation(let config):
+      try container.encode("isolation", forKey: .use)
+      try container.encode(config, forKey: .options)
+    }
+  }
+}
+
+/// Configuration for isolation pattern
+public struct IsolationConfig: Codable, Sendable, Equatable {
+  /// Directory containing the isolation application
+  public var dir: String
+
+  public init(dir: String) {
+    self.dir = dir
+  }
+}
+
+// MARK: - CSP Modification Configuration
+
+/// Configuration for disabling CSP modifications
+public enum CSPModificationConfig: Codable, Sendable, Equatable {
+  /// Disable all CSP modifications
+  case all
+
+  /// Disable specific directive modifications
+  case directives([String])
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let boolValue = try? container.decode(Bool.self) {
+      self = boolValue ? .all : .directives([])
+    } else {
+      let directives = try container.decode([String].self)
+      self = .directives(directives)
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .all:
+      try container.encode(true)
+    case .directives(let directives):
+      if directives.isEmpty {
+        try container.encode(false)
+      } else {
+        try container.encode(directives)
+      }
+    }
+  }
+
+  /// Check if modifications for a specific directive should be disabled
+  public func shouldDisable(directive: String) -> Bool {
+    switch self {
+    case .all:
+      return true
+    case .directives(let disabled):
+      return disabled.contains(directive)
+    }
   }
 }
 

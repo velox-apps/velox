@@ -383,6 +383,12 @@ public final class VeloxAppBuilder {
         if let wv = webview {
           eventManager.register(webview: wv, label: windowConfig.label)
 
+          // Inject security initialization scripts (must run first)
+          let securityScript = SecurityScriptGenerator.generateInitScript(config: config.app.security)
+          if !securityScript.isEmpty {
+            wv.evaluate(script: securityScript)
+          }
+
           // Notify plugins that webview is ready
           if pluginManager.hasPlugins {
             let webviewHandle = eventManager.getWebviewHandle(windowConfig.label)
@@ -419,5 +425,180 @@ public final class VeloxAppBuilder {
     }
 
     return result
+  }
+
+  /// Create an app protocol handler that serves static content with security headers
+  ///
+  /// This method creates a protocol handler for serving static HTML content with
+  /// proper security headers (CSP, custom headers from config).
+  ///
+  /// - Parameters:
+  ///   - scheme: The protocol scheme (default: "app")
+  ///   - contentProvider: A closure that provides the HTML content for a given path
+  /// - Returns: Self for chaining
+  @discardableResult
+  public func registerAppProtocol(
+    scheme: String = "app",
+    contentProvider: @escaping @Sendable (String) -> String?
+  ) -> Self {
+    let security = config.app.security
+
+    return registerProtocol(scheme) { request in
+      guard let url = URL(string: request.url) else {
+        return nil
+      }
+
+      let path = url.path.isEmpty || url.path == "/" ? "/index.html" : url.path
+
+      guard let content = contentProvider(path) else {
+        return VeloxRuntimeWry.CustomProtocol.Response(
+          status: 404,
+          headers: ["Content-Type": "text/plain"],
+          mimeType: "text/plain",
+          body: Data("Not Found".utf8)
+        )
+      }
+
+      // Build headers
+      var headers: [String: String] = [
+        "Content-Type": "text/html; charset=utf-8"
+      ]
+
+      // Add CSP header if configured
+      if let cspConfig = security?.csp {
+        let cspValue = cspConfig.buildHeaderValue()
+        headers["Content-Security-Policy"] = cspValue
+      }
+
+      // Add custom headers from security config
+      if let customHeaders = security?.headers {
+        for (key, value) in customHeaders {
+          headers[key] = value
+        }
+      }
+
+      return VeloxRuntimeWry.CustomProtocol.Response(
+        status: 200,
+        headers: headers,
+        mimeType: "text/html",
+        body: Data(content.utf8)
+      )
+    }
+  }
+
+  /// Create an asset protocol handler that serves files with security validation
+  ///
+  /// This method creates a protocol handler for serving local files with
+  /// path validation against the configured asset scope.
+  ///
+  /// - Parameter scheme: The protocol scheme (default: "asset")
+  /// - Returns: Self for chaining
+  @discardableResult
+  public func registerAssetProtocol(scheme: String = "asset") -> Self {
+    let security = config.app.security
+    let assetConfig = security?.assetProtocol
+
+    // Check if asset protocol is enabled
+    guard assetConfig?.isEnabled == true else {
+      // Return a handler that always returns forbidden
+      return registerProtocol(scheme) { _ in
+        VeloxRuntimeWry.CustomProtocol.Response(
+          status: 403,
+          headers: ["Content-Type": "text/plain"],
+          mimeType: "text/plain",
+          body: Data("Asset protocol is not enabled".utf8)
+        )
+      }
+    }
+
+    let validator = AssetPathValidator(scope: assetConfig?.scope ?? [])
+
+    return registerProtocol(scheme) { request in
+      guard let url = URL(string: request.url) else {
+        return nil
+      }
+
+      // Get the file path from the URL
+      var filePath = url.path
+      if filePath.hasPrefix("/") {
+        filePath = String(filePath.dropFirst())
+      }
+
+      // URL decode the path
+      filePath = filePath.removingPercentEncoding ?? filePath
+
+      // Validate against scope
+      guard validator.isAllowed(filePath) else {
+        return VeloxRuntimeWry.CustomProtocol.Response(
+          status: 403,
+          headers: ["Content-Type": "text/plain"],
+          mimeType: "text/plain",
+          body: Data("Access denied: path not in scope".utf8)
+        )
+      }
+
+      // Read the file
+      guard let data = FileManager.default.contents(atPath: filePath) else {
+        return VeloxRuntimeWry.CustomProtocol.Response(
+          status: 404,
+          headers: ["Content-Type": "text/plain"],
+          mimeType: "text/plain",
+          body: Data("File not found".utf8)
+        )
+      }
+
+      // Determine MIME type
+      let mimeType = Self.mimeType(for: filePath)
+
+      // Build headers
+      var headers: [String: String] = [
+        "Content-Type": mimeType
+      ]
+
+      // Add custom headers from security config
+      if let customHeaders = security?.headers {
+        for (key, value) in customHeaders {
+          headers[key] = value
+        }
+      }
+
+      return VeloxRuntimeWry.CustomProtocol.Response(
+        status: 200,
+        headers: headers,
+        mimeType: mimeType,
+        body: data
+      )
+    }
+  }
+
+  /// Determine MIME type from file extension
+  private static func mimeType(for path: String) -> String {
+    let ext = (path as NSString).pathExtension.lowercased()
+    switch ext {
+    case "html", "htm": return "text/html"
+    case "css": return "text/css"
+    case "js", "mjs": return "application/javascript"
+    case "json": return "application/json"
+    case "png": return "image/png"
+    case "jpg", "jpeg": return "image/jpeg"
+    case "gif": return "image/gif"
+    case "svg": return "image/svg+xml"
+    case "webp": return "image/webp"
+    case "ico": return "image/x-icon"
+    case "woff": return "font/woff"
+    case "woff2": return "font/woff2"
+    case "ttf": return "font/ttf"
+    case "otf": return "font/otf"
+    case "mp3": return "audio/mpeg"
+    case "mp4": return "video/mp4"
+    case "webm": return "video/webm"
+    case "wav": return "audio/wav"
+    case "ogg": return "audio/ogg"
+    case "pdf": return "application/pdf"
+    case "xml": return "application/xml"
+    case "txt": return "text/plain"
+    case "wasm": return "application/wasm"
+    default: return "application/octet-stream"
+    }
   }
 }
