@@ -8,10 +8,18 @@ import VeloxRuntime
 // MARK: - IPC Command Handler
 
 /// Creates an IPC protocol handler from a CommandRegistry
+///
+/// - Parameters:
+///   - registry: The command registry to use for command lookup
+///   - stateContainer: Container for managed application state
+///   - eventManager: Optional event manager for webview handles
+///   - permissionManager: Optional permission manager for access control
+/// - Returns: A protocol handler function
 public func createCommandHandler(
   registry: CommandRegistry,
   stateContainer: StateContainer = StateContainer(),
-  eventManager: VeloxEventManager? = nil
+  eventManager: VeloxEventManager? = nil,
+  permissionManager: PermissionManager? = nil
 ) -> VeloxRuntimeWry.CustomProtocol.Handler {
   return { request in
     guard let url = URL(string: request.url) else {
@@ -32,7 +40,8 @@ public func createCommandHandler(
       webview: webviewHandle
     )
 
-    let result = registry.invoke(command, context: context)
+    // Invoke with permission checking
+    let result = registry.invoke(command, context: context, permissionManager: permissionManager)
     let response = result.encodeToResponse()
 
     // Merge in CORS header
@@ -86,7 +95,8 @@ public extension VeloxAppBuilder {
     let handler = createCommandHandler(
       registry: registry,
       stateContainer: stateContainer,
-      eventManager: eventManager
+      eventManager: eventManager,
+      permissionManager: permissionManager
     )
     return registerProtocol(scheme) { request in
       handler(request)

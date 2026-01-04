@@ -257,8 +257,34 @@ public final class CommandRegistry: @unchecked Sendable {
     }
   }
 
-  /// Invoke a command by name
-  public func invoke(_ name: String, context: CommandContext) -> CommandResult {
+  /// Invoke a command by name with optional permission checking
+  ///
+  /// - Parameters:
+  ///   - name: The command name to invoke
+  ///   - context: The command context containing request details
+  ///   - permissionManager: Optional permission manager for access control
+  /// - Returns: The command result
+  public func invoke(
+    _ name: String,
+    context: CommandContext,
+    permissionManager: PermissionManager? = nil
+  ) -> CommandResult {
+    // Permission check (if manager provided)
+    if let manager = permissionManager {
+      // Extract scope values from the request body
+      let scopeValues = extractScopeValues(from: context)
+
+      let result = manager.checkPermission(
+        command: name,
+        webviewId: context.webviewId,
+        scopeValues: scopeValues
+      )
+
+      if case .failure(let error) = result {
+        return .err(code: "PermissionDenied", message: error.localizedDescription)
+      }
+    }
+
     lock.lock()
     let handler = handlers[name]
     lock.unlock()
@@ -268,6 +294,33 @@ public final class CommandRegistry: @unchecked Sendable {
     }
 
     return handler(context)
+  }
+
+  /// Extract scope values from command context for permission checking
+  private func extractScopeValues(from context: CommandContext) -> [String: String] {
+    var values: [String: String] = [:]
+
+    // Try to parse JSON from request body
+    guard let json = try? JSONSerialization.jsonObject(with: context.rawBody) as? [String: Any]
+    else {
+      return values
+    }
+
+    // Common scope parameters
+    if let path = json["path"] as? String {
+      values["path"] = path
+    }
+    if let url = json["url"] as? String {
+      values["url"] = url
+    }
+    if let file = json["file"] as? String {
+      values["path"] = file
+    }
+    if let dir = json["dir"] as? String {
+      values["path"] = dir
+    }
+
+    return values
   }
 
   /// Check if a command is registered

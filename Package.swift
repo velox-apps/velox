@@ -90,6 +90,10 @@ let package = Package(
       targets: ["Plugins"]
     ),
     .executable(
+      name: "Permissions",
+      targets: ["Permissions"]
+    ),
+    .executable(
       name: "velox",
       targets: ["VeloxCLI"]
     )
@@ -255,6 +259,11 @@ let package = Package(
       name: "Plugins",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/Plugins"
+    ),
+    .executableTarget(
+      name: "Permissions",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/Permissions"
     ),
     .executableTarget(
       name: "VeloxCLI",

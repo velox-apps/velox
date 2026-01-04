@@ -235,14 +235,34 @@ public struct SecurityConfig: Codable, Sendable {
   /// Whether to freeze the prototype chain
   public var freezePrototype: Bool?
 
+  /// Capabilities configuration - groups of permissions targeting specific windows
+  public var capabilities: [CapabilityConfig]?
+
+  /// Permission definitions with scopes for fine-grained access control
+  public var permissions: [String: PermissionConfig]?
+
+  /// Default policy for app commands (default: allow)
+  public var defaultAppCommandPolicy: DefaultPolicy?
+
+  /// Default policy for plugin commands (default: deny)
+  public var defaultPluginCommandPolicy: DefaultPolicy?
+
   public init(
     csp: String? = nil,
     devCsp: String? = nil,
-    freezePrototype: Bool? = nil
+    freezePrototype: Bool? = nil,
+    capabilities: [CapabilityConfig]? = nil,
+    permissions: [String: PermissionConfig]? = nil,
+    defaultAppCommandPolicy: DefaultPolicy? = nil,
+    defaultPluginCommandPolicy: DefaultPolicy? = nil
   ) {
     self.csp = csp
     self.devCsp = devCsp
     self.freezePrototype = freezePrototype
+    self.capabilities = capabilities
+    self.permissions = permissions
+    self.defaultAppCommandPolicy = defaultAppCommandPolicy
+    self.defaultPluginCommandPolicy = defaultPluginCommandPolicy
   }
 }
 

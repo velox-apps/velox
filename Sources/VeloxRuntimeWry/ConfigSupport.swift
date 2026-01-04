@@ -229,17 +229,32 @@ public final class VeloxAppBuilder {
   /// Command registry for this app
   public let commandRegistry: CommandRegistry
 
+  /// Permission manager for access control
+  public let permissionManager: PermissionManager
+
   /// Initialize with a VeloxConfig
   public init(
     config: VeloxConfig,
     eventManager: VeloxEventManager = VeloxEventManager(),
     stateContainer: StateContainer = StateContainer(),
-    commandRegistry: CommandRegistry = CommandRegistry()
+    commandRegistry: CommandRegistry = CommandRegistry(),
+    permissionManager: PermissionManager = PermissionManager()
   ) {
     self.config = config
     self.eventManager = eventManager
     self.stateContainer = stateContainer
     self.commandRegistry = commandRegistry
+    self.permissionManager = permissionManager
+
+    // Configure permission manager from security config
+    if let security = config.app.security {
+      permissionManager.configure(
+        capabilities: security.capabilities,
+        permissions: security.permissions,
+        defaultAppCommandPolicy: security.defaultAppCommandPolicy,
+        defaultPluginCommandPolicy: security.defaultPluginCommandPolicy
+      )
+    }
   }
 
   /// Load config from the default location (velox.json in current directory)

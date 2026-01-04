@@ -1,0 +1,409 @@
+// Copyright 2019-2024 Tauri Programme within The Commons Conservancy
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
+
+// Permissions - Demonstrates the capability/permission system
+// Shows two windows with different access levels:
+// - "main" window: Full access to all commands
+// - "limited" window: Restricted to only "greet" command
+
+import Foundation
+import VeloxRuntime
+import VeloxRuntimeWry
+
+// MARK: - Response Types
+
+struct GreetResponse: Codable, Sendable {
+  let message: String
+}
+
+struct SecretResponse: Codable, Sendable {
+  let secret: String
+  let accessedFrom: String
+}
+
+struct FileReadResponse: Codable, Sendable {
+  let path: String
+  let size: Int
+  let allowed: Bool
+}
+
+struct SensitiveDataResponse: Codable, Sendable {
+  let data: String
+  let classification: String
+}
+
+// MARK: - HTML Content
+
+func mainWindowHTML() -> String {
+  """
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Main Window - Full Access</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+      h1 { color: #1a1a1a; border-bottom: 2px solid #007AFF; padding-bottom: 10px; }
+      h2 { color: #333; margin-top: 30px; }
+      .access-level { background: #e8f5e9; color: #2e7d32; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; }
+      button { background: #007AFF; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 5px; }
+      button:hover { background: #0056b3; }
+      .result { margin: 15px 0; padding: 15px; border-radius: 8px; font-family: monospace; white-space: pre-wrap; }
+      .success { background: #e8f5e9; border: 1px solid #4caf50; }
+      .error { background: #ffebee; border: 1px solid #f44336; color: #c62828; }
+      .info { background: #e3f2fd; border: 1px solid #2196f3; }
+      .commands { display: flex; flex-wrap: wrap; gap: 5px; margin: 15px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Main Window</h1>
+    <div class="access-level">Access Level: FULL</div>
+
+    <p>This window has full access via the "main-full-access" capability.</p>
+
+    <h2>Available Commands</h2>
+    <div class="commands">
+      <button onclick="testGreet()">greet</button>
+      <button onclick="testSecret()">get_secret</button>
+      <button onclick="testSensitive()">get_sensitive_data</button>
+      <button onclick="testReadAllowed()">read_file (allowed path)</button>
+      <button onclick="testReadDenied()">read_file (denied path)</button>
+    </div>
+
+    <div id="result" class="result info">Click a button to test a command...</div>
+
+    <script>
+      async function invoke(cmd, args = {}) {
+        const body = JSON.stringify(args);
+        const response = await fetch(`ipc://localhost/${cmd}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body
+        });
+        const data = await response.json();
+        return { ok: response.ok, data };
+      }
+
+      function showResult(ok, data) {
+        const el = document.getElementById('result');
+        el.textContent = JSON.stringify(data, null, 2);
+        el.className = 'result ' + (ok ? 'success' : 'error');
+      }
+
+      async function testGreet() {
+        const { ok, data } = await invoke('greet', { name: 'Main Window User' });
+        showResult(ok, data);
+      }
+
+      async function testSecret() {
+        const { ok, data } = await invoke('get_secret');
+        showResult(ok, data);
+      }
+
+      async function testSensitive() {
+        const { ok, data } = await invoke('get_sensitive_data');
+        showResult(ok, data);
+      }
+
+      async function testReadAllowed() {
+        const { ok, data } = await invoke('read_file', { path: '/tmp/test.txt' });
+        showResult(ok, data);
+      }
+
+      async function testReadDenied() {
+        const { ok, data } = await invoke('read_file', { path: '/etc/passwd' });
+        showResult(ok, data);
+      }
+    </script>
+  </body>
+  </html>
+  """
+}
+
+func limitedWindowHTML() -> String {
+  """
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Limited Window - Restricted Access</title>
+    <style>
+      body { font-family: -apple-system, system-ui, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+      h1 { color: #1a1a1a; border-bottom: 2px solid #ff9800; padding-bottom: 10px; }
+      h2 { color: #333; margin-top: 30px; }
+      .access-level { background: #fff3e0; color: #e65100; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; }
+      button { background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 5px; }
+      button:hover { background: #f57c00; }
+      button.denied { background: #9e9e9e; }
+      .result { margin: 15px 0; padding: 15px; border-radius: 8px; font-family: monospace; white-space: pre-wrap; }
+      .success { background: #e8f5e9; border: 1px solid #4caf50; }
+      .error { background: #ffebee; border: 1px solid #f44336; color: #c62828; }
+      .info { background: #e3f2fd; border: 1px solid #2196f3; }
+      .commands { display: flex; flex-wrap: wrap; gap: 5px; margin: 15px 0; }
+      .note { background: #fff8e1; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Limited Window</h1>
+    <div class="access-level">Access Level: LIMITED</div>
+
+    <p>This window only has access to the "greet" command via the "limited-access" capability.</p>
+
+    <div class="note">
+      <strong>Note:</strong> Commands other than "greet" will return PermissionDenied errors.
+    </div>
+
+    <h2>Test Commands</h2>
+    <div class="commands">
+      <button onclick="testGreet()">greet (allowed)</button>
+      <button class="denied" onclick="testSecret()">get_secret (denied)</button>
+      <button class="denied" onclick="testSensitive()">get_sensitive_data (denied)</button>
+      <button class="denied" onclick="testRead()">read_file (denied)</button>
+    </div>
+
+    <div id="result" class="result info">Click a button to test a command...</div>
+
+    <script>
+      async function invoke(cmd, args = {}) {
+        const body = JSON.stringify(args);
+        const response = await fetch(`ipc://localhost/${cmd}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body
+        });
+        const data = await response.json();
+        return { ok: response.ok, data };
+      }
+
+      function showResult(ok, data) {
+        const el = document.getElementById('result');
+        el.textContent = JSON.stringify(data, null, 2);
+        el.className = 'result ' + (ok ? 'success' : 'error');
+      }
+
+      async function testGreet() {
+        const { ok, data } = await invoke('greet', { name: 'Limited Window User' });
+        showResult(ok, data);
+      }
+
+      async function testSecret() {
+        const { ok, data } = await invoke('get_secret');
+        showResult(ok, data);
+      }
+
+      async function testSensitive() {
+        const { ok, data } = await invoke('get_sensitive_data');
+        showResult(ok, data);
+      }
+
+      async function testRead() {
+        const { ok, data } = await invoke('read_file', { path: '/tmp/test.txt' });
+        showResult(ok, data);
+      }
+    </script>
+  </body>
+  </html>
+  """
+}
+
+// MARK: - Main
+
+func main() {
+  guard Thread.isMainThread else {
+    fatalError("Permissions example must run on the main thread")
+  }
+
+  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
+    fatalError("Failed to create event loop")
+  }
+
+  #if os(macOS)
+  eventLoop.setActivationPolicy(.regular)
+  #endif
+
+  // Create permission manager with capabilities
+  let permissionManager = PermissionManager()
+
+  // Capability for main window - full access
+  // Note: Wry assigns webview identifiers as "1", "2", etc.
+  // The first webview created gets "1", the second gets "2"
+  permissionManager.registerCapability(
+    CapabilityConfig(
+      identifier: "main-full-access",
+      description: "Full access for main window",
+      windows: ["1"],  // First webview created
+      permissions: ["greet", "get_secret", "get_sensitive_data", "read_file"]
+    ))
+
+  // Capability for limited window - only greet
+  permissionManager.registerCapability(
+    CapabilityConfig(
+      identifier: "limited-access",
+      description: "Limited access for restricted window",
+      windows: ["2"],  // Second webview created
+      permissions: ["greet"]
+    ))
+
+  // Permission with scope for file reading (only /tmp allowed)
+  permissionManager.registerPermission(
+    PermissionConfig(
+      identifier: "read_file",
+      scopes: ["path": .globs(["/tmp/*", "/var/tmp/*"])]
+    ))
+
+  print("[Permissions] Registered capabilities: \(permissionManager.capabilityIdentifiers)")
+  print("[Permissions] Registered permissions: \(permissionManager.permissionIdentifiers)")
+
+  // Create command registry
+  let registry = CommandRegistry()
+
+  registry.register("greet", returning: GreetResponse.self) { ctx in
+    let args = ctx.decodeArgs()
+    let name = args["name"] as? String ?? "World"
+    return GreetResponse(message: "Hello, \(name)!")
+  }
+
+  registry.register("get_secret", returning: SecretResponse.self) { ctx in
+    SecretResponse(
+      secret: "TOP_SECRET_VALUE_12345",
+      accessedFrom: ctx.webviewId
+    )
+  }
+
+  registry.register("get_sensitive_data", returning: SensitiveDataResponse.self) { _ in
+    SensitiveDataResponse(
+      data: "Sensitive internal data...",
+      classification: "CONFIDENTIAL"
+    )
+  }
+
+  registry.register("read_file", returning: FileReadResponse.self) { ctx in
+    let args = ctx.decodeArgs()
+    let path = args["path"] as? String ?? "/unknown"
+    // In a real app, you'd actually read the file here
+    // The permission manager already validated the path scope
+    return FileReadResponse(
+      path: path,
+      size: 1024,
+      allowed: true
+    )
+  }
+
+  print("[Permissions] Registered commands: \(registry.commandNames.sorted())")
+
+  // Create event manager
+  let eventManager = VeloxEventManager()
+
+  // Create IPC handler with permission checking
+  let ipcHandler = createCommandHandler(
+    registry: registry,
+    eventManager: eventManager,
+    permissionManager: permissionManager
+  )
+  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
+
+  // Create main window (full access)
+  let mainWindowConfig = VeloxRuntimeWry.WindowConfiguration(
+    width: 650,
+    height: 550,
+    title: "Permissions Demo - Main Window (Full Access)"
+  )
+
+  guard let mainWindow = eventLoop.makeWindow(configuration: mainWindowConfig) else {
+    fatalError("Failed to create main window")
+  }
+
+  // App protocol for main window
+  let mainAppProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+    VeloxRuntimeWry.CustomProtocol.Response(
+      status: 200,
+      headers: ["Content-Type": "text/html; charset=utf-8"],
+      mimeType: "text/html",
+      body: Data(mainWindowHTML().utf8)
+    )
+  }
+
+  let mainWebviewConfig = VeloxRuntimeWry.WebviewConfiguration(
+    url: "app://localhost/",
+    customProtocols: [ipcProtocol, mainAppProtocol]
+  )
+
+  guard let mainWebview = mainWindow.makeWebview(configuration: mainWebviewConfig) else {
+    fatalError("Failed to create main webview")
+  }
+
+  eventManager.register(webview: mainWebview, label: "1")
+  mainWebview.show()
+  mainWindow.setVisible(true)
+
+  // Create limited window (restricted access)
+  let limitedWindowConfig = VeloxRuntimeWry.WindowConfiguration(
+    width: 650,
+    height: 550,
+    title: "Permissions Demo - Limited Window (Restricted)"
+  )
+
+  guard let limitedWindow = eventLoop.makeWindow(configuration: limitedWindowConfig) else {
+    fatalError("Failed to create limited window")
+  }
+
+  // Position limited window to the right of main window
+  limitedWindow.setPosition(x: 700, y: 100)
+
+  // App protocol for limited window
+  let limitedAppProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+    VeloxRuntimeWry.CustomProtocol.Response(
+      status: 200,
+      headers: ["Content-Type": "text/html; charset=utf-8"],
+      mimeType: "text/html",
+      body: Data(limitedWindowHTML().utf8)
+    )
+  }
+
+  // Create new IPC protocol for limited window (same handler, different protocol instance)
+  let limitedIpcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
+
+  let limitedWebviewConfig = VeloxRuntimeWry.WebviewConfiguration(
+    url: "app://localhost/",
+    customProtocols: [limitedIpcProtocol, limitedAppProtocol]
+  )
+
+  guard let limitedWebview = limitedWindow.makeWebview(configuration: limitedWebviewConfig) else {
+    fatalError("Failed to create limited webview")
+  }
+
+  eventManager.register(webview: limitedWebview, label: "2")
+  limitedWebview.show()
+  limitedWindow.setVisible(true)
+
+  #if os(macOS)
+  eventLoop.showApplication()
+  #endif
+
+  print("[Permissions] Application started with two windows")
+  print("[Permissions] - Main window: Full access to all commands")
+  print("[Permissions] - Limited window: Access only to 'greet' command")
+
+  // Event loop
+  final class RunState: @unchecked Sendable {
+    var shouldExit = false
+  }
+  let runState = RunState()
+
+  while !runState.shouldExit {
+    eventLoop.pump { event in
+      switch event {
+      case .windowCloseRequested, .userExit:
+        runState.shouldExit = true
+        return .exit
+      default:
+        return .wait
+      }
+    }
+  }
+
+  print("[Permissions] Exiting")
+}
+
+main()
