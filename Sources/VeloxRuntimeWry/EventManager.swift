@@ -186,6 +186,64 @@ private final class WeakWebview: @unchecked Sendable {
   }
 }
 
+// MARK: - Webview Handle Implementation
+
+/// Concrete implementation of WebviewHandle using VeloxEventManager
+internal final class WebviewHandleImpl: WebviewHandle, @unchecked Sendable {
+  public let id: String
+  private weak var eventManager: VeloxEventManager?
+
+  init(id: String, eventManager: VeloxEventManager) {
+    self.id = id
+    self.eventManager = eventManager
+  }
+
+  @discardableResult
+  public func evaluate(script: String) -> Bool {
+    guard let manager = eventManager else { return false }
+    return manager.evaluateInWebview(id, script: script)
+  }
+
+  public func emit<T: Encodable & Sendable>(_ eventName: String, payload: T) throws {
+    try eventManager?.emitTo(id, event: eventName, payload: payload)
+  }
+}
+
+// MARK: - VeloxEventManager Webview Handle Support
+
+public extension VeloxEventManager {
+  /// Get a webview handle for a given identifier
+  func getWebviewHandle(_ id: String) -> WebviewHandle? {
+    lock.lock()
+    defer { lock.unlock() }
+
+    // Check if webview exists with this ID
+    if webviews[id]?.webview != nil {
+      return WebviewHandleImpl(id: id, eventManager: self)
+    }
+    return nil
+  }
+
+  /// Evaluate script in a specific webview (internal use)
+  /// Note: Script execution is deferred to run after the current IPC request completes,
+  /// as the webview is locked during request handling.
+  internal func evaluateInWebview(_ id: String, script: String) -> Bool {
+    lock.lock()
+    let webview = webviews[id]?.webview
+    lock.unlock()
+
+    guard let wv = webview else {
+      return false
+    }
+
+    // Defer script execution - webview is locked during IPC request handling
+    DispatchQueue.main.async {
+      _ = wv.evaluate(script: script)
+    }
+    return true
+  }
+}
+
 // MARK: - Protocol Conformance
 
 extension VeloxEventManager: EventEmitter {}

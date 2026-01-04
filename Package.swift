@@ -181,17 +181,28 @@ let package = Package(
     .executableTarget(
       name: "HelloWorld2",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/HelloWorld2"
+      path: "Examples/HelloWorld2",
+      resources: [
+        .copy("assets"),
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "CommandsManual",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/CommandsManual"
+      path: "Examples/CommandsManual",
+      exclude: ["README.md"],
+      resources: [
+        .copy("assets")
+      ]
     ),
     .executableTarget(
       name: "Resources",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Resources"
+      path: "Examples/Resources",
+      resources: [
+        .copy("resources")
+      ]
     ),
     .executableTarget(
       name: "WindowControls",
@@ -221,12 +232,20 @@ let package = Package(
     .executableTarget(
       name: "CommandsManualRegistry",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/CommandsManualRegistry"
+      path: "Examples/CommandsManualRegistry",
+      exclude: ["README.md"],
+      resources: [
+        .copy("assets")
+      ]
     ),
     .executableTarget(
       name: "Commands",
       dependencies: ["VeloxRuntimeWry", "VeloxMacros"],
-      path: "Examples/Commands"
+      path: "Examples/Commands",
+      exclude: ["README.md"],
+      resources: [
+        .copy("assets")
+      ]
     ),
     .executableTarget(
       name: "VeloxCLI",

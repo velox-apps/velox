@@ -58,6 +58,23 @@
       <button onclick="ping()">Ping Server</button>
       <div class="result" id="ping-result">-</div>
     </div>
+
+    <div class="card">
+      <h2>Binary Response (Image)</h2>
+      <p class="subtitle">Returns a 1x1 red PNG image</p>
+      <button onclick="getImage()">Get Image</button>
+      <div class="result" id="image-result">
+        <img id="image-preview" style="display:none; width:50px; height:50px; image-rendering:pixelated;">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Webview Injection</h2>
+      <p class="subtitle">Command executes JS in webview</p>
+      <input type="text" id="alert-message" placeholder="Message" value="Hello from Swift!">
+      <button onclick="showAlert()">Send to Webview</button>
+      <div class="result" id="alert-result">-</div>
+    </div>
   </div>
 
   <script src="app.js"></script>

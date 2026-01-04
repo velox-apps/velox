@@ -63,4 +63,43 @@ async function ping() {
   showResult('ping-result', result);
 }
 
+// Binary response test - fetch image directly
+async function getImage() {
+  const resultEl = document.getElementById('image-result');
+  const imgEl = document.getElementById('image-preview');
+  try {
+    const response = await fetch('ipc://localhost/get_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+
+    if (!response.ok) {
+      resultEl.className = 'result error';
+      resultEl.textContent = 'Error: ' + response.status;
+      imgEl.style.display = 'none';
+      return;
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    imgEl.src = url;
+    imgEl.style.display = 'block';
+    resultEl.className = 'result success';
+    resultEl.innerHTML = 'Received ' + blob.size + ' bytes (' + blob.type + ')<br>';
+    resultEl.appendChild(imgEl);
+  } catch (e) {
+    resultEl.className = 'result error';
+    resultEl.textContent = 'Error: ' + e.message;
+    imgEl.style.display = 'none';
+  }
+}
+
+// Webview injection test - command calls JavaScript in webview
+async function showAlert() {
+  const message = document.getElementById('alert-message').value || 'Hello!';
+  const result = await invoke('show_alert', { message });
+  showResult('alert-result', result);
+}
+
 console.log('Commands loaded - using @VeloxCommand macro');

@@ -9,6 +9,7 @@ import Foundation
 /// The result of a command execution
 public enum CommandResult: Sendable {
   case success(Encodable & Sendable)
+  case binary(Data, mimeType: String)
   case error(CommandError)
 
   /// Create a success result with any encodable value
@@ -19,6 +20,16 @@ public enum CommandResult: Sendable {
   /// Create a success result with no return value
   public static var ok: CommandResult {
     .success(EmptyResponse())
+  }
+
+  /// Create a binary result with raw data and default mime type
+  public static func binaryData(_ data: Data) -> CommandResult {
+    .binary(data, mimeType: "application/octet-stream")
+  }
+
+  /// Create a binary result for an image
+  public static func image(_ data: Data, type: ImageType) -> CommandResult {
+    .binary(data, mimeType: type.mimeType)
   }
 
   /// Create an error result
@@ -34,6 +45,25 @@ public enum CommandResult: Sendable {
   /// Create an error result with code and message
   public static func err(code: String, message: String) -> CommandResult {
     .error(CommandError(code: code, message: message))
+  }
+}
+
+/// Image types for binary responses
+public enum ImageType: Sendable {
+  case png
+  case jpeg
+  case gif
+  case webp
+  case svg
+
+  public var mimeType: String {
+    switch self {
+    case .png: return "image/png"
+    case .jpeg: return "image/jpeg"
+    case .gif: return "image/gif"
+    case .webp: return "image/webp"
+    case .svg: return "image/svg+xml"
+    }
   }
 }
 
@@ -56,6 +86,26 @@ public struct CommandError: Error, Sendable {
   }
 }
 
+// MARK: - Webview Handle
+
+/// Handle for interacting with a webview from command handlers
+public protocol WebviewHandle: Sendable {
+  /// The webview identifier
+  var id: String { get }
+
+  /// Execute JavaScript in the webview
+  /// - Parameter script: The JavaScript code to execute
+  /// - Returns: true if the script was sent successfully
+  @discardableResult
+  func evaluate(script: String) -> Bool
+
+  /// Emit an event to this webview
+  /// - Parameters:
+  ///   - eventName: The name of the event
+  ///   - payload: The event payload (must be Encodable)
+  func emit<T: Encodable & Sendable>(_ eventName: String, payload: T) throws
+}
+
 // MARK: - Command Context
 
 /// Context passed to command handlers
@@ -75,18 +125,23 @@ public struct CommandContext: @unchecked Sendable {
   /// The state container for accessing managed state
   public let stateContainer: StateContainer
 
+  /// Handle to the requesting webview (nil if not available)
+  public let webview: WebviewHandle?
+
   public init(
     command: String,
     rawBody: Data,
     headers: [String: String] = [:],
     webviewId: String = "",
-    stateContainer: StateContainer = StateContainer()
+    stateContainer: StateContainer = StateContainer(),
+    webview: WebviewHandle? = nil
   ) {
     self.command = command
     self.rawBody = rawBody
     self.headers = headers
     self.webviewId = webviewId
     self.stateContainer = stateContainer
+    self.webview = webview
   }
 
   /// Decode the request body as a specific type
@@ -230,10 +285,49 @@ public final class CommandRegistry: @unchecked Sendable {
   }
 }
 
+// MARK: - Command Response
+
+/// A command response with status, headers, and body
+public struct CommandResponse: Sendable {
+  public let status: Int
+  public let headers: [String: String]
+  public let body: Data
+
+  public init(status: Int, headers: [String: String], body: Data) {
+    self.status = status
+    self.headers = headers
+    self.body = body
+  }
+}
+
 // MARK: - Command Response Encoding
 
 public extension CommandResult {
-  /// Encode the result as JSON data
+  /// Encode the result as a full response with appropriate content type
+  func encodeToResponse() -> CommandResponse {
+    switch self {
+    case .success:
+      return CommandResponse(
+        status: 200,
+        headers: ["Content-Type": "application/json"],
+        body: encodeToJSON()
+      )
+    case .binary(let data, let mimeType):
+      return CommandResponse(
+        status: 200,
+        headers: ["Content-Type": mimeType],
+        body: data
+      )
+    case .error(let error):
+      return CommandResponse(
+        status: 400,
+        headers: ["Content-Type": "application/json"],
+        body: encodeErrorToJSON(error)
+      )
+    }
+  }
+
+  /// Encode the result as JSON data (for success responses)
   func encodeToJSON() -> Data {
     let encoder = JSONEncoder()
 
@@ -251,13 +345,22 @@ public extension CommandResult {
       }
       return Data("{\"result\":null}".utf8)
 
+    case .binary:
+      // Binary responses shouldn't use JSON encoding
+      return Data("{\"error\":\"Binary response cannot be encoded as JSON\"}".utf8)
+
     case .error(let error):
-      let errorObj: [String: Any] = [
-        "error": error.code,
-        "message": error.message
-      ]
-      return (try? JSONSerialization.data(withJSONObject: errorObj)) ?? Data("{\"error\":\"Unknown\"}".utf8)
+      return encodeErrorToJSON(error)
     }
+  }
+
+  /// Encode an error as JSON data
+  private func encodeErrorToJSON(_ error: CommandError) -> Data {
+    let errorObj: [String: Any] = [
+      "error": error.code,
+      "message": error.message
+    ]
+    return (try? JSONSerialization.data(withJSONObject: errorObj)) ?? Data("{\"error\":\"Unknown\"}".utf8)
   }
 }
 

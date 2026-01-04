@@ -2508,7 +2508,7 @@ pub extern "C" fn velox_webview_build(
                         }
                     };
 
-                    let webview_id_string = format!("{webview_id:?}");
+                    let webview_id_string = format!("{webview_id}");
                     let webview_id_cstring = CString::new(webview_id_string)
                         .unwrap_or_else(|_| CString::new("").expect("empty string"));
 

@@ -10,7 +10,8 @@ import VeloxRuntime
 /// Creates an IPC protocol handler from a CommandRegistry
 public func createCommandHandler(
   registry: CommandRegistry,
-  stateContainer: StateContainer = StateContainer()
+  stateContainer: StateContainer = StateContainer(),
+  eventManager: VeloxEventManager? = nil
 ) -> VeloxRuntimeWry.CustomProtocol.Handler {
   return { request in
     guard let url = URL(string: request.url) else {
@@ -19,24 +20,30 @@ public func createCommandHandler(
 
     let command = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
+    // Create webview handle if event manager is available
+    let webviewHandle = eventManager?.getWebviewHandle(request.webviewIdentifier)
+
     let context = CommandContext(
       command: command,
       rawBody: request.body,
       headers: request.headers,
       webviewId: request.webviewIdentifier,
-      stateContainer: stateContainer
+      stateContainer: stateContainer,
+      webview: webviewHandle
     )
 
     let result = registry.invoke(command, context: context)
+    let response = result.encodeToResponse()
+
+    // Merge in CORS header
+    var headers = response.headers
+    headers["Access-Control-Allow-Origin"] = "*"
 
     return VeloxRuntimeWry.CustomProtocol.Response(
-      status: result.isSuccess ? 200 : 400,
-      headers: [
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      ],
-      mimeType: "application/json",
-      body: result.encodeToJSON()
+      status: response.status,
+      headers: headers,
+      mimeType: headers["Content-Type"],
+      body: response.body
     )
   }
 }
@@ -61,7 +68,7 @@ private func errorResponse(code: String, message: String) -> VeloxRuntimeWry.Cus
 extension CommandResult {
   var isSuccess: Bool {
     switch self {
-    case .success: return true
+    case .success, .binary: return true
     case .error: return false
     }
   }
@@ -76,7 +83,11 @@ public extension VeloxAppBuilder {
     _ registry: CommandRegistry,
     scheme: String = "ipc"
   ) -> Self {
-    let handler = createCommandHandler(registry: registry, stateContainer: stateContainer)
+    let handler = createCommandHandler(
+      registry: registry,
+      stateContainer: stateContainer,
+      eventManager: eventManager
+    )
     return registerProtocol(scheme) { request in
       handler(request)
     }
@@ -205,4 +216,63 @@ public func command<Result: Encodable & Sendable>(
       return .err(code: "Error", message: error.localizedDescription)
     }
   }
+}
+
+// MARK: - Binary Command Helpers
+
+/// Define a command that returns binary data
+public func binaryCommand(
+  _ name: String,
+  mimeType: String = "application/octet-stream",
+  handler: @escaping @Sendable (CommandContext) throws -> Data
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    do {
+      let data = try handler(context)
+      return .binary(data, mimeType: mimeType)
+    } catch let error as CommandError {
+      return .err(error)
+    } catch {
+      return .err(code: "Error", message: error.localizedDescription)
+    }
+  }
+}
+
+/// Define a command with typed args that returns binary data
+public func binaryCommand<Args: Decodable & Sendable>(
+  _ name: String,
+  args: Args.Type,
+  mimeType: String = "application/octet-stream",
+  handler: @escaping @Sendable (Args, CommandContext) throws -> Data
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    do {
+      let args = try context.decode(Args.self)
+      let data = try handler(args, context)
+      return .binary(data, mimeType: mimeType)
+    } catch let error as CommandError {
+      return .err(error)
+    } catch {
+      return .err(code: "Error", message: error.localizedDescription)
+    }
+  }
+}
+
+/// Define a command that returns an image
+public func imageCommand(
+  _ name: String,
+  type: ImageType = .png,
+  handler: @escaping @Sendable (CommandContext) throws -> Data
+) -> CommandDefinition {
+  binaryCommand(name, mimeType: type.mimeType, handler: handler)
+}
+
+/// Define a command with typed args that returns an image
+public func imageCommand<Args: Decodable & Sendable>(
+  _ name: String,
+  args: Args.Type,
+  type: ImageType = .png,
+  handler: @escaping @Sendable (Args, CommandContext) throws -> Data
+) -> CommandDefinition {
+  binaryCommand(name, args: args, mimeType: type.mimeType, handler: handler)
 }
