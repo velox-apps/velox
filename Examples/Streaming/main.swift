@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 
 import Foundation
+import VeloxRuntime
 import VeloxRuntimeWry
 
 // MARK: - Video Streaming Handler
@@ -160,9 +161,193 @@ func rangeNotSatisfiable(fileSize: UInt64) -> VeloxRuntimeWry.CustomProtocol.Res
   )
 }
 
+// MARK: - Channel Streaming Events
+
+/// Events sent through the download progress channel
+enum SimulatedDownloadEvent: Codable, Sendable {
+  case started(totalBytes: Int)
+  case progress(bytesReceived: Int, totalBytes: Int)
+  case finished
+  case error(String)
+
+  enum CodingKeys: String, CodingKey {
+    case event, data
+  }
+
+  enum EventType: String, Codable {
+    case started, progress, finished, error
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let eventType = try container.decode(EventType.self, forKey: .event)
+    switch eventType {
+    case .started:
+      var dataContainer = try container.nestedContainer(keyedBy: StartedKeys.self, forKey: .data)
+      let totalBytes = try dataContainer.decode(Int.self, forKey: .totalBytes)
+      self = .started(totalBytes: totalBytes)
+    case .progress:
+      var dataContainer = try container.nestedContainer(keyedBy: ProgressKeys.self, forKey: .data)
+      let bytesReceived = try dataContainer.decode(Int.self, forKey: .bytesReceived)
+      let totalBytes = try dataContainer.decode(Int.self, forKey: .totalBytes)
+      self = .progress(bytesReceived: bytesReceived, totalBytes: totalBytes)
+    case .finished:
+      self = .finished
+    case .error:
+      var dataContainer = try container.nestedContainer(keyedBy: ErrorKeys.self, forKey: .data)
+      let message = try dataContainer.decode(String.self, forKey: .message)
+      self = .error(message)
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .started(let totalBytes):
+      try container.encode(EventType.started, forKey: .event)
+      var dataContainer = container.nestedContainer(keyedBy: StartedKeys.self, forKey: .data)
+      try dataContainer.encode(totalBytes, forKey: .totalBytes)
+    case .progress(let bytesReceived, let totalBytes):
+      try container.encode(EventType.progress, forKey: .event)
+      var dataContainer = container.nestedContainer(keyedBy: ProgressKeys.self, forKey: .data)
+      try dataContainer.encode(bytesReceived, forKey: .bytesReceived)
+      try dataContainer.encode(totalBytes, forKey: .totalBytes)
+    case .finished:
+      try container.encode(EventType.finished, forKey: .event)
+    case .error(let message):
+      try container.encode(EventType.error, forKey: .event)
+      var dataContainer = container.nestedContainer(keyedBy: ErrorKeys.self, forKey: .data)
+      try dataContainer.encode(message, forKey: .message)
+    }
+  }
+
+  private enum StartedKeys: String, CodingKey { case totalBytes }
+  private enum ProgressKeys: String, CodingKey { case bytesReceived, totalBytes }
+  private enum ErrorKeys: String, CodingKey { case message }
+}
+
 // MARK: - HTML Content
 
 func htmlContent(videoExists: Bool) -> String {
+  // Common styles and channel demo section
+  let channelDemoSection = """
+    <div class="channel-demo">
+      <h2>Channel Streaming Demo</h2>
+      <p>Click the button to start a simulated download with progress updates via Channel streaming.</p>
+      <button id="startDownload" onclick="startChannelDownload()">Start Simulated Download</button>
+      <div id="progressContainer" style="display: none;">
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <div id="progressText">0%</div>
+      </div>
+      <div id="downloadLog" class="log"></div>
+    </div>
+    <script>
+      async function invoke(cmd, args = {}) {
+        const body = JSON.stringify(args);
+        const response = await fetch('ipc://localhost/' + cmd, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: body
+        });
+        return response.json();
+      }
+
+      function startChannelDownload() {
+        const btn = document.getElementById('startDownload');
+        const container = document.getElementById('progressContainer');
+        const fill = document.getElementById('progressFill');
+        const text = document.getElementById('progressText');
+        const log = document.getElementById('downloadLog');
+
+        btn.disabled = true;
+        container.style.display = 'block';
+        log.innerHTML = '';
+
+        // Create a new channel for progress updates
+        const channel = new VeloxChannel();
+
+        channel.onmessage = (msg) => {
+          console.log('Channel message:', msg);
+
+          switch (msg.event) {
+            case 'started':
+              log.innerHTML += '<div>Download started: ' + msg.data.totalBytes + ' bytes</div>';
+              break;
+            case 'progress':
+              const percent = Math.round((msg.data.bytesReceived / msg.data.totalBytes) * 100);
+              fill.style.width = percent + '%';
+              text.textContent = percent + '% (' + msg.data.bytesReceived + '/' + msg.data.totalBytes + ')';
+              break;
+            case 'finished':
+              log.innerHTML += '<div class="success">Download complete!</div>';
+              btn.disabled = false;
+              break;
+            case 'error':
+              log.innerHTML += '<div class="error">Error: ' + msg.data.message + '</div>';
+              btn.disabled = false;
+              break;
+          }
+        };
+
+        channel.onclose = () => {
+          console.log('Channel closed');
+        };
+
+        // Invoke the command with the channel
+        invoke('simulate_download', { onProgress: channel }).then(result => {
+          console.log('Command returned:', result);
+        }).catch(err => {
+          console.error('Command error:', err);
+          btn.disabled = false;
+        });
+      }
+    </script>
+    """
+
+  let channelStyles = """
+    .channel-demo {
+      background: #1a1a2e;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px;
+      color: #eee;
+    }
+    .channel-demo h2 { margin-bottom: 10px; color: #fff; }
+    .channel-demo p { margin-bottom: 15px; color: #aaa; }
+    .channel-demo button {
+      background: #4c6ef5;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .channel-demo button:hover { background: #3b5bdb; }
+    .channel-demo button:disabled { background: #666; cursor: not-allowed; }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background: #333;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 15px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4c6ef5, #748ffc);
+      width: 0%;
+      transition: width 0.2s ease;
+    }
+    #progressText { text-align: center; color: #aaa; }
+    .log { margin-top: 15px; font-family: monospace; font-size: 12px; }
+    .log div { padding: 4px 0; border-bottom: 1px solid #333; }
+    .log .success { color: #51cf66; }
+    .log .error { color: #ff6b6b; }
+    """
+
   if videoExists {
     return """
     <!DOCTYPE html>
@@ -174,23 +359,38 @@ func htmlContent(videoExists: Bool) -> String {
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
-            background: #000;
+            background: #0f0f1a;
+            min-height: 100vh;
+            padding: 20px;
+          }
+          .video-container {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
+            margin-bottom: 20px;
           }
           video {
             max-width: 100%;
-            max-height: 100vh;
+            max-height: 60vh;
+            border-radius: 8px;
           }
+          h1 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 20px;
+          }
+          \(channelStyles)
         </style>
       </head>
       <body>
-        <video controls autoplay>
-          <source src="stream://localhost/video.mp4" type="video/mp4" />
-          Your browser does not support video playback.
-        </video>
+        <h1>Velox Streaming Example</h1>
+        <div class="video-container">
+          <video controls autoplay>
+            <source src="stream://localhost/video.mp4" type="video/mp4" />
+            Your browser does not support video playback.
+          </video>
+        </div>
+        \(channelDemoSection)
       </body>
     </html>
     """
@@ -202,45 +402,53 @@ func htmlContent(videoExists: Bool) -> String {
         <meta charset="UTF-8" />
         <title>Velox Streaming Example</title>
         <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
           body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
+            background: #0f0f1a;
+            color: #eee;
+            min-height: 100vh;
             padding: 20px;
           }
-          h1 { color: #333; }
+          .container { max-width: 700px; margin: 0 auto; }
+          h1 { color: #fff; margin-bottom: 20px; }
           .warning {
-            background: #fff3cd;
+            background: #3d2e00;
             border: 1px solid #ffc107;
-            color: #856404;
+            color: #ffd43b;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
           }
           code {
-            background: #f5f5f5;
+            background: #2d2d3d;
             padding: 2px 6px;
             border-radius: 4px;
             font-family: "SF Mono", Monaco, monospace;
           }
           pre {
-            background: #f5f5f5;
+            background: #1a1a2e;
             padding: 15px;
             border-radius: 8px;
             overflow-x: auto;
+            color: #aaa;
           }
+          \(channelStyles)
         </style>
       </head>
       <body>
-        <h1>Streaming Example</h1>
-        <div class="warning">
-          <strong>Video file not found!</strong>
-          <p>To run this example, you need to download a sample video file.</p>
-        </div>
-        <p>Run the following command to download a sample video:</p>
-        <pre>curl -L -o streaming_example_test_video.mp4 \\
+        <div class="container">
+          <h1>Velox Streaming Example</h1>
+          <div class="warning">
+            <strong>Video file not found!</strong>
+            <p>To run this example with video, download a sample video file.</p>
+          </div>
+          <p>Run the following command to download a sample video:</p>
+          <pre>curl -L -o streaming_example_test_video.mp4 \\
       "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"</pre>
-        <p>Then run the example again from the <code>velox</code> directory.</p>
+          <p style="margin-top: 15px;">Then run the example again from the <code>velox</code> directory.</p>
+        </div>
+        \(channelDemoSection)
       </body>
     </html>
     """
@@ -280,13 +488,64 @@ func main() {
     handleStreamRequest(request, videoPath: videoPath)
   }
 
-  // App protocol for HTML
+  // Event manager for webview handles
+  let eventManager = VeloxEventManager()
+
+  // Command registry with simulated download command
+  let registry = CommandRegistry()
+  registry.register("simulate_download") { ctx -> CommandResult in
+    // Get the channel from arguments
+    guard let channel: Channel<SimulatedDownloadEvent> = ctx.channel("onProgress") else {
+      return .err(code: "MissingChannel", message: "Missing onProgress channel")
+    }
+
+    // Simulate a download in a background task
+    let totalBytes = 10_000_000  // 10 MB simulated
+    let chunkSize = 500_000  // 500 KB chunks
+
+    Task.detached {
+      // Send started event
+      channel.send(.started(totalBytes: totalBytes))
+
+      // Simulate downloading chunks
+      var bytesReceived = 0
+      while bytesReceived < totalBytes {
+        // Simulate network delay
+        try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+
+        bytesReceived = min(bytesReceived + chunkSize, totalBytes)
+        channel.send(.progress(bytesReceived: bytesReceived, totalBytes: totalBytes))
+      }
+
+      // Send finished event
+      channel.send(.finished)
+      channel.close()
+    }
+
+    return .ok
+  }
+
+  // IPC protocol for commands
+  let ipcHandler = createCommandHandler(
+    registry: registry,
+    eventManager: eventManager
+  )
+  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
+
+  // App protocol for HTML (with channel API injected)
+  let securityScript = SecurityScriptGenerator.generateInitScript(config: nil)
   let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-    VeloxRuntimeWry.CustomProtocol.Response(
+    let html = htmlContent(videoExists: videoExists)
+    // Inject channel API script before closing </head>
+    let injectedHtml = html.replacingOccurrences(
+      of: "</head>",
+      with: "<script>\(securityScript)</script></head>"
+    )
+    return VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
       mimeType: "text/html",
-      body: Data(htmlContent(videoExists: videoExists).utf8)
+      body: Data(injectedHtml.utf8)
     )
   }
 
@@ -302,12 +561,15 @@ func main() {
 
   let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
     url: "app://localhost/",
-    customProtocols: [appProtocol, streamProtocol]
+    customProtocols: [appProtocol, streamProtocol, ipcProtocol]
   )
 
   guard let webview = window.makeWebview(configuration: webviewConfig) else {
     fatalError("Failed to create webview")
   }
+
+  // Register webview with event manager for channel support
+  eventManager.register(webview: webview, label: "main")
 
   // Show window and activate app
   _ = window.setVisible(true)

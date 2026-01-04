@@ -10,12 +10,17 @@ import Foundation
 public enum SecurityScriptGenerator {
 
   /// Generate all security initialization scripts based on configuration
-  public static func generateInitScript(config: SecurityConfig?) -> String {
+  public static func generateInitScript(config: SecurityConfig?, includeChannelAPI: Bool = true) -> String {
     var scripts: [String] = []
 
-    // Freeze prototype if enabled
+    // Freeze prototype if enabled (must run first)
     if config?.freezePrototype == true {
       scripts.append(freezePrototypeScript)
+    }
+
+    // Include Channel API for streaming
+    if includeChannelAPI {
+      scripts.append(channelFrontendScript)
     }
 
     return scripts.joined(separator: "\n")

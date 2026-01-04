@@ -805,23 +805,23 @@ struct AssetPathValidatorTests {
 @Suite("SecurityScriptGenerator")
 struct SecurityScriptGeneratorTests {
 
-  @Test("No script when freezePrototype is false")
-  func noScriptWhenDisabled() {
+  @Test("No freeze script when freezePrototype is false")
+  func noFreezeScriptWhenDisabled() {
     let config = SecurityConfig(freezePrototype: false)
-    let script = SecurityScriptGenerator.generateInitScript(config: config)
+    let script = SecurityScriptGenerator.generateInitScript(config: config, includeChannelAPI: false)
     #expect(script.isEmpty)
   }
 
-  @Test("No script when config is nil")
-  func noScriptWhenNil() {
-    let script = SecurityScriptGenerator.generateInitScript(config: nil)
+  @Test("No freeze script when config is nil")
+  func noFreezeScriptWhenNil() {
+    let script = SecurityScriptGenerator.generateInitScript(config: nil, includeChannelAPI: false)
     #expect(script.isEmpty)
   }
 
   @Test("Generates freeze script when enabled")
   func generatesScriptWhenEnabled() {
     let config = SecurityConfig(freezePrototype: true)
-    let script = SecurityScriptGenerator.generateInitScript(config: config)
+    let script = SecurityScriptGenerator.generateInitScript(config: config, includeChannelAPI: false)
     #expect(!script.isEmpty)
     #expect(script.contains("Object.freeze"))
     #expect(script.contains("Object.prototype"))
@@ -834,6 +834,227 @@ struct SecurityScriptGeneratorTests {
     #expect(script.contains("Object.freeze(Array.prototype)"))
     #expect(script.contains("Object.freeze(Function.prototype)"))
     #expect(script.contains("Object.freeze(String.prototype)"))
+  }
+
+  @Test("Includes channel API by default")
+  func includesChannelAPIByDefault() {
+    let script = SecurityScriptGenerator.generateInitScript(config: nil)
+    #expect(script.contains("VeloxChannel"))
+    #expect(script.contains("__veloxChannels"))
+  }
+
+  @Test("Can exclude channel API")
+  func excludeChannelAPI() {
+    let script = SecurityScriptGenerator.generateInitScript(config: nil, includeChannelAPI: false)
+    #expect(!script.contains("VeloxChannel"))
+  }
+}
+
+// MARK: - Channel Tests
+
+@Suite("Channel")
+struct ChannelTests {
+
+  @Test("Channel reference decoding")
+  func channelRefDecoding() throws {
+    let json = """
+      {
+        "__channelId": "ch_abc123_1234567890"
+      }
+      """
+    let data = Data(json.utf8)
+    let ref = try JSONDecoder().decode(ChannelRef.self, from: data)
+
+    #expect(ref.channelId == "ch_abc123_1234567890")
+  }
+
+  @Test("Channel reference encoding")
+  func channelRefEncoding() throws {
+    let ref = ChannelRef(channelId: "ch_test123")
+    let data = try JSONEncoder().encode(ref)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["__channelId"] as? String == "ch_test123")
+  }
+
+  @Test("Channel starts open")
+  func channelStartsOpen() {
+    let channel = Channel<String>(id: "test", webview: nil)
+    #expect(!channel.closed)
+  }
+
+  @Test("Channel can be closed")
+  func channelCanBeClosed() {
+    let channel = Channel<String>(id: "test", webview: nil)
+    channel.close()
+    #expect(channel.closed)
+  }
+
+  @Test("Send fails after close")
+  func sendFailsAfterClose() {
+    let channel = Channel<String>(id: "test", webview: nil)
+    channel.close()
+    let result = channel.send("message")
+    #expect(!result)
+  }
+
+  @Test("ChannelRegistry stores and retrieves channels")
+  func channelRegistryOperations() {
+    let registry = ChannelRegistry()
+    let channel = Channel<String>(id: "test-channel", webview: nil)
+
+    registry.register(channel)
+
+    let retrieved = registry.get("test-channel", as: String.self)
+    #expect(retrieved?.id == "test-channel")
+  }
+
+  @Test("ChannelRegistry removes channels")
+  func channelRegistryRemove() {
+    let registry = ChannelRegistry()
+    let channel = Channel<String>(id: "test-channel", webview: nil)
+
+    registry.register(channel)
+    registry.remove("test-channel")
+
+    let retrieved = registry.get("test-channel", as: String.self)
+    #expect(retrieved == nil)
+  }
+
+  @Test("CommandContext extracts channel from args")
+  func commandContextChannel() {
+    let json = """
+      {
+        "onProgress": {
+          "__channelId": "ch_progress_123"
+        },
+        "other": "value"
+      }
+      """
+    let context = CommandContext(
+      command: "test",
+      rawBody: Data(json.utf8),
+      webviewId: "main"
+    )
+
+    #expect(context.hasChannel("onProgress"))
+    #expect(!context.hasChannel("other"))
+    #expect(!context.hasChannel("missing"))
+  }
+}
+
+// MARK: - Progress Event Tests
+
+@Suite("ProgressEvent")
+struct ProgressEventTests {
+
+  @Test("Progress percentage calculation")
+  func progressPercentage() {
+    let event = ProgressEvent(current: 50, total: 100)
+    #expect(event.percentage == 50.0)
+  }
+
+  @Test("Progress percentage with no total")
+  func progressPercentageNoTotal() {
+    let event = ProgressEvent(current: 50, total: nil)
+    #expect(event.percentage == nil)
+  }
+
+  @Test("Progress event encoding")
+  func progressEventEncoding() throws {
+    let event = ProgressEvent(current: 75, total: 100, message: "Downloading...")
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["current"] as? UInt64 == 75)
+    #expect(json?["total"] as? UInt64 == 100)
+    #expect(json?["message"] as? String == "Downloading...")
+  }
+}
+
+// MARK: - Download Event Tests
+
+@Suite("DownloadEvent")
+struct DownloadEventTests {
+
+  @Test("Download started encoding")
+  func downloadStartedEncoding() throws {
+    let event = DownloadEvent.started(url: "https://example.com/file.zip", contentLength: 1024)
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "started")
+    let eventData = json?["data"] as? [String: Any]
+    #expect(eventData?["url"] as? String == "https://example.com/file.zip")
+    #expect(eventData?["contentLength"] as? UInt64 == 1024)
+  }
+
+  @Test("Download progress encoding")
+  func downloadProgressEncoding() throws {
+    let event = DownloadEvent.progress(bytesReceived: 512, totalBytes: 1024)
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "progress")
+    let eventData = json?["data"] as? [String: Any]
+    #expect(eventData?["bytesReceived"] as? UInt64 == 512)
+  }
+
+  @Test("Download finished encoding")
+  func downloadFinishedEncoding() throws {
+    let event = DownloadEvent.finished(path: "/tmp/file.zip")
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "finished")
+    let eventData = json?["data"] as? [String: Any]
+    #expect(eventData?["path"] as? String == "/tmp/file.zip")
+  }
+
+  @Test("Download failed encoding")
+  func downloadFailedEncoding() throws {
+    let event = DownloadEvent.failed(error: "Network error")
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "failed")
+    let eventData = json?["data"] as? [String: Any]
+    #expect(eventData?["error"] as? String == "Network error")
+  }
+}
+
+// MARK: - Stream Event Tests
+
+@Suite("StreamEvent")
+struct StreamEventTests {
+
+  @Test("Stream data event encoding")
+  func streamDataEncoding() throws {
+    let event = StreamEvent<String>.data("Hello, World!")
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "data")
+    #expect(json?["data"] as? String == "Hello, World!")
+  }
+
+  @Test("Stream end event encoding")
+  func streamEndEncoding() throws {
+    let event = StreamEvent<String>.end
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "end")
+  }
+
+  @Test("Stream error event encoding")
+  func streamErrorEncoding() throws {
+    let event = StreamEvent<String>.error("Something went wrong")
+    let data = try JSONEncoder().encode(event)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+    #expect(json?["event"] as? String == "error")
+    #expect(json?["data"] as? String == "Something went wrong")
   }
 }
 

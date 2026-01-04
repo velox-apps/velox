@@ -286,3 +286,135 @@ public func imageCommand<Args: Decodable & Sendable>(
 ) -> CommandDefinition {
   binaryCommand(name, args: args, mimeType: type.mimeType, handler: handler)
 }
+
+// MARK: - Channel Command Helpers
+
+/// Define a streaming command that uses a channel for progress/data updates.
+///
+/// The handler receives a Channel that can be used to send updates back to the frontend.
+/// The command returns immediately after starting, with updates flowing through the channel.
+///
+/// Frontend usage:
+/// ```javascript
+/// const channel = new VeloxChannel();
+/// channel.onmessage = (msg) => console.log('Update:', msg);
+/// await invoke('stream_data', { onProgress: channel });
+/// ```
+///
+/// - Parameters:
+///   - name: The command name
+///   - channelKey: The argument key containing the channel reference (default: "onProgress")
+///   - handler: The handler that receives the channel and context
+public func streamingCommand<Event: Encodable & Sendable>(
+  _ name: String,
+  channelKey: String = "onProgress",
+  handler: @escaping @Sendable (Channel<Event>, CommandContext) throws -> Void
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    guard let channel: Channel<Event> = context.channel(channelKey) else {
+      return .err(code: "MissingChannel", message: "Missing or invalid channel parameter '\(channelKey)'")
+    }
+
+    do {
+      try handler(channel, context)
+      return .ok
+    } catch let error as CommandError {
+      return .err(error)
+    } catch {
+      return .err(code: "Error", message: error.localizedDescription)
+    }
+  }
+}
+
+/// Define a streaming command with typed arguments
+public func streamingCommand<Args: Decodable & Sendable, Event: Encodable & Sendable>(
+  _ name: String,
+  args: Args.Type,
+  channelKey: String = "onProgress",
+  handler: @escaping @Sendable (Args, Channel<Event>, CommandContext) throws -> Void
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    guard let channel: Channel<Event> = context.channel(channelKey) else {
+      return .err(code: "MissingChannel", message: "Missing or invalid channel parameter '\(channelKey)'")
+    }
+
+    do {
+      let args = try context.decode(Args.self)
+      try handler(args, channel, context)
+      return .ok
+    } catch let error as CommandError {
+      return .err(error)
+    } catch {
+      return .err(code: "Error", message: error.localizedDescription)
+    }
+  }
+}
+
+/// Define an async streaming command that runs in the background
+///
+/// The handler runs asynchronously, allowing long-running operations.
+/// Progress updates are sent through the channel.
+public func asyncStreamingCommand<Event: Encodable & Sendable>(
+  _ name: String,
+  channelKey: String = "onProgress",
+  handler: @escaping @Sendable (Channel<Event>, CommandContext) async throws -> Void
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    guard let channel: Channel<Event> = context.channel(channelKey) else {
+      return .err(code: "MissingChannel", message: "Missing or invalid channel parameter '\(channelKey)'")
+    }
+
+    // Run the async handler in a detached task
+    Task.detached {
+      do {
+        try await handler(channel, context)
+      } catch {
+        // Send error through channel if possible
+        if let errorChannel = channel as? Channel<StreamEvent<String>> {
+          _ = errorChannel.send(.error(error.localizedDescription))
+        }
+      }
+      channel.close()
+    }
+
+    // Return immediately - updates flow through channel
+    return .ok
+  }
+}
+
+/// Define an async streaming command with typed arguments
+public func asyncStreamingCommand<Args: Decodable & Sendable, Event: Encodable & Sendable>(
+  _ name: String,
+  args: Args.Type,
+  channelKey: String = "onProgress",
+  handler: @escaping @Sendable (Args, Channel<Event>, CommandContext) async throws -> Void
+) -> CommandDefinition {
+  CommandDefinition(name) { context in
+    guard let channel: Channel<Event> = context.channel(channelKey) else {
+      return .err(code: "MissingChannel", message: "Missing or invalid channel parameter '\(channelKey)'")
+    }
+
+    let decodedArgs: Args
+    do {
+      decodedArgs = try context.decode(Args.self)
+    } catch {
+      return .err(code: "DecodeError", message: "Failed to decode arguments: \(error.localizedDescription)")
+    }
+
+    // Run the async handler in a detached task
+    Task.detached {
+      do {
+        try await handler(decodedArgs, channel, context)
+      } catch {
+        // Send error through channel if possible
+        if let errorChannel = channel as? Channel<StreamEvent<String>> {
+          _ = errorChannel.send(.error(error.localizedDescription))
+        }
+      }
+      channel.close()
+    }
+
+    // Return immediately - updates flow through channel
+    return .ok
+  }
+}
