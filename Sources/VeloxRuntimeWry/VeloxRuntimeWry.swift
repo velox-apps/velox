@@ -2679,7 +2679,7 @@ public extension VeloxRuntimeWry {
 
   final class Submenu: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxSubmenuHandle>
-    private var retainedItems: [MenuItem] = []
+    private var retainedItems: [AnyObject] = []
 
     public let identifier: String
 
@@ -2720,6 +2720,39 @@ public extension VeloxRuntimeWry {
       }
       retainedItems.append(item)
       return true
+    }
+
+    @discardableResult
+    public func append(_ item: CheckMenuItem) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      guard velox_submenu_append_check_item(raw, item.raw) else {
+        return false
+      }
+      retainedItems.append(item)
+      return true
+    }
+
+    @discardableResult
+    public func append(_ separator: MenuSeparator) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      guard velox_submenu_append_separator(raw, separator.raw) else {
+        return false
+      }
+      retainedItems.append(separator)
+      return true
+    }
+
+    /// Convenience method to append a separator
+    @discardableResult
+    public func appendSeparator() -> Bool {
+      guard let separator = MenuSeparator() else {
+        return false
+      }
+      return append(separator)
     }
   }
 
@@ -2800,6 +2833,126 @@ public extension VeloxRuntimeWry {
         }
       }
       return velox_menu_item_set_accelerator(raw, nil)
+    }
+  }
+
+  /// A separator menu item that displays a horizontal line in a menu
+  final class MenuSeparator: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxSeparatorHandle>
+    public let identifier: String
+
+    public init?() {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      guard let handle = velox_separator_new() else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_separator_identifier(handle))
+    }
+
+    deinit {
+      velox_separator_free(raw)
+    }
+  }
+
+  /// A menu item with a checkmark that can be toggled
+  final class CheckMenuItem: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxCheckMenuItemHandle>
+    public let identifier: String
+
+    public init?(
+      identifier: String? = nil,
+      title: String,
+      isEnabled: Bool = true,
+      isChecked: Bool = false,
+      accelerator: String? = nil
+    ) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let handle: UnsafeMutablePointer<VeloxCheckMenuItemHandle>? = title.withCString { titlePointer in
+        withOptionalCString(identifier ?? "") { idPointer in
+          withOptionalCString(accelerator ?? "") { acceleratorPointer in
+            velox_check_menu_item_new(idPointer, titlePointer, isEnabled, isChecked, acceleratorPointer)
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_check_menu_item_identifier(handle))
+    }
+
+    deinit {
+      velox_check_menu_item_free(raw)
+    }
+
+    public func title() -> String {
+      guard Thread.isMainThread else {
+        return ""
+      }
+      return string(from: velox_check_menu_item_text(raw))
+    }
+
+    @discardableResult
+    public func setTitle(_ title: String) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return title.withCString { pointer in
+        velox_check_menu_item_set_text(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func setEnabled(_ isEnabled: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_check_menu_item_set_enabled(raw, isEnabled)
+    }
+
+    public func isEnabled() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_check_menu_item_is_enabled(raw)
+    }
+
+    public func isChecked() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_check_menu_item_is_checked(raw)
+    }
+
+    @discardableResult
+    public func setChecked(_ isChecked: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_check_menu_item_set_checked(raw, isChecked)
+    }
+
+    @discardableResult
+    public func setAccelerator(_ accelerator: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      if let accelerator {
+        return accelerator.withCString { pointer in
+          velox_check_menu_item_set_accelerator(raw, pointer)
+        }
+      }
+      return velox_check_menu_item_set_accelerator(raw, nil)
     }
   }
 

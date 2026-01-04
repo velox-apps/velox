@@ -176,6 +176,31 @@ func main() {
     fileSubmenu.append(hideItem)
   }
 
+  // Add a separator
+  fileSubmenu.appendSeparator()
+
+  // Add checkbox menu items
+  if let notifyItem = VeloxRuntimeWry.CheckMenuItem(
+    identifier: "notifications",
+    title: "Enable Notifications",
+    isEnabled: true,
+    isChecked: true
+  ) {
+    fileSubmenu.append(notifyItem)
+  }
+
+  if let autoStartItem = VeloxRuntimeWry.CheckMenuItem(
+    identifier: "auto-start",
+    title: "Launch at Login",
+    isEnabled: true,
+    isChecked: false
+  ) {
+    fileSubmenu.append(autoStartItem)
+  }
+
+  // Add another separator before About/Quit
+  fileSubmenu.appendSeparator()
+
   if let aboutItem = VeloxRuntimeWry.MenuItem(
     identifier: "about",
     title: "About Velox",

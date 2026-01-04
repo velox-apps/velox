@@ -53,6 +53,14 @@ typedef struct {
 typedef struct {
   char _unused;
 } VeloxMenuItemHandle;
+
+typedef struct {
+  char _unused;
+} VeloxCheckMenuItemHandle;
+
+typedef struct {
+  char _unused;
+} VeloxSeparatorHandle;
 #endif
 
 typedef enum {
@@ -425,6 +433,35 @@ const char *velox_menu_item_text(VeloxMenuItemHandle *item);
 bool velox_menu_item_set_text(VeloxMenuItemHandle *item, const char *title);
 bool velox_menu_item_set_accelerator(VeloxMenuItemHandle *item, const char *accelerator);
 const char *velox_menu_item_identifier(VeloxMenuItemHandle *item);
+
+VeloxSeparatorHandle *velox_separator_new(void);
+void velox_separator_free(VeloxSeparatorHandle *separator);
+const char *velox_separator_identifier(VeloxSeparatorHandle *separator);
+bool velox_submenu_append_separator(
+  VeloxSubmenuHandle *submenu,
+  VeloxSeparatorHandle *separator
+);
+
+VeloxCheckMenuItemHandle *velox_check_menu_item_new(
+  const char *identifier,
+  const char *title,
+  bool enabled,
+  bool checked,
+  const char *accelerator
+);
+void velox_check_menu_item_free(VeloxCheckMenuItemHandle *item);
+bool velox_check_menu_item_is_checked(VeloxCheckMenuItemHandle *item);
+bool velox_check_menu_item_set_checked(VeloxCheckMenuItemHandle *item, bool checked);
+bool velox_check_menu_item_is_enabled(VeloxCheckMenuItemHandle *item);
+bool velox_check_menu_item_set_enabled(VeloxCheckMenuItemHandle *item, bool enabled);
+const char *velox_check_menu_item_text(VeloxCheckMenuItemHandle *item);
+bool velox_check_menu_item_set_text(VeloxCheckMenuItemHandle *item, const char *title);
+bool velox_check_menu_item_set_accelerator(VeloxCheckMenuItemHandle *item, const char *accelerator);
+const char *velox_check_menu_item_identifier(VeloxCheckMenuItemHandle *item);
+bool velox_submenu_append_check_item(
+  VeloxSubmenuHandle *submenu,
+  VeloxCheckMenuItemHandle *item
+);
 
 bool velox_tray_set_menu(VeloxTrayHandle *handle, VeloxMenuBarHandle *menu);
 

@@ -11,7 +11,10 @@ use std::{cell::RefCell, thread::LocalKey};
 use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 #[cfg(target_os = "macos")]
-use muda::{accelerator::Accelerator, Menu, MenuEvent, MenuId, MenuItem, Submenu};
+use muda::{
+    accelerator::Accelerator, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
+    PredefinedMenuItem, Submenu,
+};
 use serde::Serialize;
 use serde_json::{json, Map};
 use tao::{
@@ -138,6 +141,18 @@ pub struct VeloxMenuItemHandle {
     identifier: CString,
 }
 
+#[cfg(target_os = "macos")]
+pub struct VeloxCheckMenuItemHandle {
+    item: CheckMenuItem,
+    identifier: CString,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxSeparatorHandle {
+    item: PredefinedMenuItem,
+    identifier: CString,
+}
+
 #[cfg(not(target_os = "macos"))]
 pub struct VeloxMenuBarHandle {
     _private: (),
@@ -150,6 +165,16 @@ pub struct VeloxSubmenuHandle {
 
 #[cfg(not(target_os = "macos"))]
 pub struct VeloxMenuItemHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxCheckMenuItemHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxSeparatorHandle {
     _private: (),
 }
 
@@ -1480,6 +1505,197 @@ pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> 
         return ptr::null();
     };
     item.identifier.as_ptr()
+}
+
+// MARK: - Separator Menu Item
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_separator_new() -> *mut VeloxSeparatorHandle {
+    guard_panic(|| {
+        let item = PredefinedMenuItem::separator();
+        let identifier = CString::new(item.id().as_ref()).expect("separator id contains null byte");
+        Box::into_raw(Box::new(VeloxSeparatorHandle { item, identifier }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_separator_free(separator: *mut VeloxSeparatorHandle) {
+    if !separator.is_null() {
+        unsafe { drop(Box::from_raw(separator)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_separator_identifier(separator: *mut VeloxSeparatorHandle) -> *const c_char {
+    let Some(separator) = (unsafe { separator.as_ref() }) else {
+        return ptr::null();
+    };
+    separator.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_append_separator(
+    submenu: *mut VeloxSubmenuHandle,
+    separator: *mut VeloxSeparatorHandle,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    let Some(separator) = (unsafe { separator.as_ref() }) else {
+        return false;
+    };
+    submenu.submenu.borrow().append(&separator.item).is_ok()
+}
+
+// MARK: - Check Menu Item
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_new(
+    id: *const c_char,
+    title: *const c_char,
+    enabled: bool,
+    checked: bool,
+    accelerator: *const c_char,
+) -> *mut VeloxCheckMenuItemHandle {
+    guard_panic(|| {
+        let title = opt_cstring(title).unwrap_or_default();
+        let accelerator = accelerator_from_ptr(accelerator);
+        let item = if let Some(id) = opt_cstring(id) {
+            CheckMenuItem::with_id(MenuId::new(id.clone()), title, enabled, checked, accelerator)
+        } else {
+            CheckMenuItem::new(title, enabled, checked, accelerator)
+        };
+        let identifier = CString::new(item.id().as_ref()).expect("check menu item id contains null byte");
+        Box::into_raw(Box::new(VeloxCheckMenuItemHandle { item, identifier }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_free(item: *mut VeloxCheckMenuItemHandle) {
+    if !item.is_null() {
+        unsafe { drop(Box::from_raw(item)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_is_checked(item: *mut VeloxCheckMenuItemHandle) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return false;
+        };
+        item.item.is_checked()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_set_checked(
+    item: *mut VeloxCheckMenuItemHandle,
+    checked: bool,
+) -> bool {
+    let Some(item) = (unsafe { item.as_mut() }) else {
+        return false;
+    };
+    item.item.set_checked(checked);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_is_enabled(item: *mut VeloxCheckMenuItemHandle) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return false;
+        };
+        item.item.is_enabled()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_set_enabled(
+    item: *mut VeloxCheckMenuItemHandle,
+    enabled: bool,
+) -> bool {
+    let Some(item) = (unsafe { item.as_mut() }) else {
+        return false;
+    };
+    item.item.set_enabled(enabled);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_text(item: *mut VeloxCheckMenuItemHandle) -> *const c_char {
+    guard_panic_value(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return ptr::null();
+        };
+        write_string_to_buffer(&TITLE_BUFFER, item.item.text())
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_set_text(
+    item: *mut VeloxCheckMenuItemHandle,
+    title: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        let text = opt_cstring(title).unwrap_or_default();
+        item.item.set_text(text);
+        true
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_set_accelerator(
+    item: *mut VeloxCheckMenuItemHandle,
+    accelerator: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        item.item
+            .set_accelerator(accelerator_from_ptr(accelerator))
+            .is_ok()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_check_menu_item_identifier(item: *mut VeloxCheckMenuItemHandle) -> *const c_char {
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return ptr::null();
+    };
+    item.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_append_check_item(
+    submenu: *mut VeloxSubmenuHandle,
+    item: *mut VeloxCheckMenuItemHandle,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return false;
+    };
+    submenu.submenu.borrow().append(&item.item).is_ok()
 }
 
 #[cfg(target_os = "macos")]
