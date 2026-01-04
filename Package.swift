@@ -46,6 +46,10 @@ let package = Package(
       targets: ["Streaming"]
     ),
     .executable(
+      name: "ChannelStreaming",
+      targets: ["ChannelStreaming"]
+    ),
+    .executable(
       name: "HelloWorld2",
       targets: ["HelloWorld2"]
     ),
@@ -185,6 +189,11 @@ let package = Package(
       name: "Streaming",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/Streaming"
+    ),
+    .executableTarget(
+      name: "ChannelStreaming",
+      dependencies: ["VeloxRuntimeWry"],
+      path: "Examples/ChannelStreaming"
     ),
     .executableTarget(
       name: "HelloWorld2",

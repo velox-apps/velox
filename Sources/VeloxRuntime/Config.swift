@@ -290,13 +290,30 @@ public struct SecurityConfig: Codable, Sendable {
 
 // MARK: - CSP Configuration
 
-/// Content Security Policy configuration.
-/// Can be a simple string or an object with individual directives.
+/// Content Security Policy configuration for controlling resource loading.
+///
+/// CSP helps prevent XSS attacks by specifying which sources are allowed for scripts,
+/// styles, images, and other resources.
+///
+/// Can be configured as a simple string:
+/// ```json
+/// { "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'" }
+/// ```
+///
+/// Or as an object with individual directives:
+/// ```json
+/// {
+///   "csp": {
+///     "default-src": "'self'",
+///     "script-src": ["'self'", "'unsafe-inline'", "https://cdn.example.com"]
+///   }
+/// }
+/// ```
 public enum CSPConfig: Codable, Sendable, Equatable {
-  /// Simple CSP string (e.g., "default-src 'self'")
+  /// Simple CSP string (e.g., "default-src 'self'; script-src 'unsafe-inline'")
   case string(String)
 
-  /// Object with individual CSP directives
+  /// Object with individual CSP directives for more granular control
   case directives([String: CSPDirectiveValue])
 
   public init(from decoder: Decoder) throws {
@@ -332,9 +349,15 @@ public enum CSPConfig: Codable, Sendable, Equatable {
   }
 }
 
-/// CSP directive value - can be a single string or array of sources
+/// Value for a single CSP directive, supporting both string and array formats.
+///
+/// In JSON configuration, directive values can be:
+/// - A single string: `"'self' 'unsafe-inline'"`
+/// - An array of sources: `["'self'", "'unsafe-inline'", "https://cdn.example.com"]`
 public enum CSPDirectiveValue: Codable, Sendable, Equatable {
+  /// Single space-separated string of sources
   case single(String)
+  /// Array of individual source values
   case multiple([String])
 
   public init(from decoder: Decoder) throws {
@@ -370,7 +393,26 @@ public enum CSPDirectiveValue: Codable, Sendable, Equatable {
 
 // MARK: - Asset Protocol Configuration
 
-/// Configuration for the asset:// protocol used to serve local files
+/// Configuration for the asset:// protocol used to serve local files.
+///
+/// The asset protocol allows your app to load files from the local filesystem
+/// through the webview. For security, you must explicitly enable it and define
+/// which paths are accessible.
+///
+/// Example configuration:
+/// ```json
+/// {
+///   "assetProtocol": {
+///     "enable": true,
+///     "scope": ["/tmp/*", "$HOME/Documents/*", "$APPDATA/*"]
+///   }
+/// }
+/// ```
+///
+/// Supported scope patterns:
+/// - `*` matches any characters within a path segment
+/// - `$HOME` or `~` expands to the user's home directory
+/// - `$APPDATA` expands to the application data directory
 public struct AssetProtocolConfig: Codable, Sendable, Equatable {
   /// Whether the asset protocol is enabled (default: false)
   public var enable: Bool?
@@ -378,12 +420,17 @@ public struct AssetProtocolConfig: Codable, Sendable, Equatable {
   /// Allowed paths/patterns for asset access (glob patterns supported)
   public var scope: [String]?
 
+  /// Create an asset protocol configuration.
+  ///
+  /// - Parameters:
+  ///   - enable: Whether to enable the asset:// protocol
+  ///   - scope: Array of glob patterns defining accessible paths
   public init(enable: Bool? = nil, scope: [String]? = nil) {
     self.enable = enable
     self.scope = scope
   }
 
-  /// Whether asset protocol is enabled
+  /// Whether asset protocol is enabled (defaults to false if not set)
   public var isEnabled: Bool {
     enable ?? false
   }
@@ -391,12 +438,31 @@ public struct AssetProtocolConfig: Codable, Sendable, Equatable {
 
 // MARK: - Pattern Configuration
 
-/// Security pattern configuration
+/// Security pattern configuration controlling how IPC is handled.
+///
+/// Velox supports two security patterns:
+///
+/// **Brownfield** (default): Standard webview with direct IPC access. Suitable for
+/// apps where you control all the frontend code.
+/// ```json
+/// { "pattern": { "use": "brownfield" } }
+/// ```
+///
+/// **Isolation**: All IPC goes through an isolated iframe that validates and sanitizes
+/// messages. Provides stronger security for apps loading untrusted content.
+/// ```json
+/// {
+///   "pattern": {
+///     "use": "isolation",
+///     "options": { "dir": "./isolation" }
+///   }
+/// }
+/// ```
 public enum PatternConfig: Codable, Sendable, Equatable {
   /// Brownfield pattern - standard webview with direct IPC (default)
   case brownfield
 
-  /// Isolation pattern - sandboxed iframe intercepts all IPC
+  /// Isolation pattern - sandboxed iframe intercepts and validates all IPC
   case isolation(IsolationConfig)
 
   enum CodingKeys: String, CodingKey {
@@ -435,11 +501,17 @@ public enum PatternConfig: Codable, Sendable, Equatable {
   }
 }
 
-/// Configuration for isolation pattern
+/// Configuration for the isolation security pattern.
+///
+/// When isolation is enabled, an iframe loads from the specified directory
+/// and intercepts all IPC messages, providing an additional security layer.
 public struct IsolationConfig: Codable, Sendable, Equatable {
-  /// Directory containing the isolation application
+  /// Directory containing the isolation application (HTML/JS files)
   public var dir: String
 
+  /// Create an isolation configuration.
+  ///
+  /// - Parameter dir: Path to the directory containing isolation app files
   public init(dir: String) {
     self.dir = dir
   }
@@ -447,12 +519,28 @@ public struct IsolationConfig: Codable, Sendable, Equatable {
 
 // MARK: - CSP Modification Configuration
 
-/// Configuration for disabling CSP modifications
+/// Configuration for disabling automatic CSP source injection.
+///
+/// By default, Velox adds necessary sources to your CSP (like `app:` and `ipc:` protocols).
+/// Use this setting to disable those modifications if you need full control over CSP.
+///
+/// Disable all modifications:
+/// ```json
+/// { "dangerousDisableAssetCspModification": true }
+/// ```
+///
+/// Disable specific directives only:
+/// ```json
+/// { "dangerousDisableAssetCspModification": ["script-src", "connect-src"] }
+/// ```
+///
+/// - Warning: Disabling CSP modifications may break app functionality if you don't
+///   manually include the required protocol sources.
 public enum CSPModificationConfig: Codable, Sendable, Equatable {
-  /// Disable all CSP modifications
+  /// Disable all automatic CSP modifications
   case all
 
-  /// Disable specific directive modifications
+  /// Disable modifications only for specific CSP directives
   case directives([String])
 
   public init(from decoder: Decoder) throws {

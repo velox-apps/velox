@@ -326,7 +326,27 @@ public func streamingCommand<Event: Encodable & Sendable>(
   }
 }
 
-/// Define a streaming command with typed arguments
+/// Define a streaming command with typed arguments.
+///
+/// This overload allows you to decode typed arguments alongside the channel.
+///
+/// Example:
+/// ```swift
+/// struct DownloadArgs: Codable { let url: String }
+///
+/// streamingCommand("download", args: DownloadArgs.self) { args, channel, ctx in
+///   channel.send(DownloadEvent.started(url: args.url, contentLength: nil))
+///   // ... perform download ...
+///   channel.send(DownloadEvent.finished(path: localPath))
+/// }
+/// ```
+///
+/// - Parameters:
+///   - name: The command name
+///   - args: The type to decode arguments into
+///   - channelKey: The argument key containing the channel reference (default: "onProgress")
+///   - handler: The handler that receives decoded args, channel, and context
+/// - Returns: A command definition for registration
 public func streamingCommand<Args: Decodable & Sendable, Event: Encodable & Sendable>(
   _ name: String,
   args: Args.Type,
@@ -350,10 +370,27 @@ public func streamingCommand<Args: Decodable & Sendable, Event: Encodable & Send
   }
 }
 
-/// Define an async streaming command that runs in the background
+/// Define an async streaming command that runs in the background.
 ///
-/// The handler runs asynchronously, allowing long-running operations.
-/// Progress updates are sent through the channel.
+/// The command returns immediately while the handler runs asynchronously in a detached task.
+/// Progress updates are sent through the channel, and the channel is automatically closed
+/// when the handler completes (or errors).
+///
+/// Example:
+/// ```swift
+/// asyncStreamingCommand("long_task") { (channel: Channel<ProgressEvent>, ctx) in
+///   for i in 0..<100 {
+///     try await Task.sleep(nanoseconds: 100_000_000)
+///     channel.send(ProgressEvent(current: UInt64(i), total: 100))
+///   }
+/// }
+/// ```
+///
+/// - Parameters:
+///   - name: The command name
+///   - channelKey: The argument key containing the channel reference (default: "onProgress")
+///   - handler: The async handler that receives the channel and context
+/// - Returns: A command definition for registration
 public func asyncStreamingCommand<Event: Encodable & Sendable>(
   _ name: String,
   channelKey: String = "onProgress",
@@ -382,7 +419,29 @@ public func asyncStreamingCommand<Event: Encodable & Sendable>(
   }
 }
 
-/// Define an async streaming command with typed arguments
+/// Define an async streaming command with typed arguments.
+///
+/// Combines async execution with typed argument decoding. The command returns
+/// immediately while the handler runs in the background.
+///
+/// Example:
+/// ```swift
+/// struct ProcessArgs: Codable { let files: [String] }
+///
+/// asyncStreamingCommand("process_files", args: ProcessArgs.self) { args, channel, ctx in
+///   for (index, file) in args.files.enumerated() {
+///     try await processFile(file)
+///     channel.send(ProgressEvent(current: UInt64(index + 1), total: UInt64(args.files.count)))
+///   }
+/// }
+/// ```
+///
+/// - Parameters:
+///   - name: The command name
+///   - args: The type to decode arguments into
+///   - channelKey: The argument key containing the channel reference (default: "onProgress")
+///   - handler: The async handler that receives decoded args, channel, and context
+/// - Returns: A command definition for registration
 public func asyncStreamingCommand<Args: Decodable & Sendable, Event: Encodable & Sendable>(
   _ name: String,
   args: Args.Type,

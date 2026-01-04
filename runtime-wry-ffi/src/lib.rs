@@ -2893,6 +2893,16 @@ pub extern "C" fn velox_webview_free(webview: *mut VeloxWebviewHandle) {
 }
 
 #[no_mangle]
+pub extern "C" fn velox_webview_identifier(webview: *mut VeloxWebviewHandle) -> *const c_char {
+    with_webview(webview, |view| {
+        let id_string = format!("{}", view.id());
+        let cstring = CString::new(id_string).unwrap_or_else(|_| CString::new("").unwrap());
+        cstring.into_raw() as *const c_char
+    })
+    .unwrap_or(ptr::null())
+}
+
+#[no_mangle]
 pub extern "C" fn velox_webview_navigate(
     webview: *mut VeloxWebviewHandle,
     url: *const c_char,

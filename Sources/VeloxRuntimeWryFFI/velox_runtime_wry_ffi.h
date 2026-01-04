@@ -362,6 +362,7 @@ void velox_dialog_prompt_result_free(VeloxPromptDialogResult result);
 
 VeloxWebviewHandle *velox_webview_build(VeloxWindowHandle *window, const VeloxWebviewConfig *config);
 void velox_webview_free(VeloxWebviewHandle *webview);
+const char *velox_webview_identifier(VeloxWebviewHandle *webview);
 bool velox_webview_navigate(VeloxWebviewHandle *webview, const char *url);
 bool velox_webview_reload(VeloxWebviewHandle *webview);
 bool velox_webview_evaluate_script(VeloxWebviewHandle *webview, const char *script);

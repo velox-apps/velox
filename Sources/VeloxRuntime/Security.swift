@@ -6,10 +6,29 @@ import Foundation
 
 // MARK: - Security Script Generator
 
-/// Generates JavaScript security scripts for webview initialization
+/// Generates JavaScript security scripts for webview initialization.
+///
+/// This generator produces JavaScript code that should be injected into webviews
+/// before any other scripts run. It handles:
+/// - Prototype freezing to prevent prototype pollution attacks
+/// - Channel API injection for backend-to-frontend streaming
+///
+/// Example:
+/// ```swift
+/// let script = SecurityScriptGenerator.generateInitScript(
+///   config: securityConfig,
+///   includeChannelAPI: true
+/// )
+/// webview.evaluate(script: script)
+/// ```
 public enum SecurityScriptGenerator {
 
-  /// Generate all security initialization scripts based on configuration
+  /// Generate all security initialization scripts based on configuration.
+  ///
+  /// - Parameters:
+  ///   - config: Security configuration (optional)
+  ///   - includeChannelAPI: Whether to include the Channel API script (default: true)
+  /// - Returns: Combined JavaScript code to inject into the webview
   public static func generateInitScript(config: SecurityConfig?, includeChannelAPI: Bool = true) -> String {
     var scripts: [String] = []
 
@@ -70,13 +89,30 @@ public enum SecurityScriptGenerator {
 
 // MARK: - CSP Builder
 
-/// Helper for building Content-Security-Policy headers
+/// A builder for constructing Content-Security-Policy (CSP) headers.
+///
+/// CSP headers control what resources a webpage can load, helping prevent XSS attacks.
+/// This builder provides a programmatic way to construct CSP strings.
+///
+/// Example:
+/// ```swift
+/// var csp = CSPBuilder()
+/// csp.set(directive: "default-src", sources: ["'self'"])
+/// csp.add(source: "https://api.example.com", to: "connect-src")
+/// let header = csp.build()  // "connect-src https://api.example.com; default-src 'self'"
+///
+/// // Or use the default CSP for Velox apps
+/// let defaultCSP = CSPBuilder.defaultCSP.build()
+/// ```
 public struct CSPBuilder {
   private var directives: [String: [String]] = [:]
 
+  /// Create an empty CSP builder
   public init() {}
 
-  /// Initialize from a CSPConfig
+  /// Initialize from a CSPConfig, parsing its directives.
+  ///
+  /// - Parameter config: A CSPConfig (string or directives object)
   public init(from config: CSPConfig) {
     switch config {
     case .string(let value):
@@ -104,7 +140,11 @@ public struct CSPBuilder {
     }
   }
 
-  /// Add a source to a directive
+  /// Add a source to a directive without removing existing sources.
+  ///
+  /// - Parameters:
+  ///   - source: The source to add (e.g., "'self'", "https://api.example.com")
+  ///   - directive: The CSP directive name (e.g., "script-src", "connect-src")
   public mutating func add(source: String, to directive: String) {
     var sources = directives[directive] ?? []
     if !sources.contains(source) {
@@ -113,17 +153,26 @@ public struct CSPBuilder {
     directives[directive] = sources
   }
 
-  /// Set sources for a directive (replacing existing)
+  /// Set sources for a directive, replacing any existing sources.
+  ///
+  /// - Parameters:
+  ///   - directive: The CSP directive name
+  ///   - sources: Array of sources to set
   public mutating func set(directive: String, sources: [String]) {
     directives[directive] = sources
   }
 
-  /// Get sources for a directive
+  /// Get the current sources for a directive.
+  ///
+  /// - Parameter directive: The CSP directive name
+  /// - Returns: Array of sources, or empty array if directive not set
   public func get(directive: String) -> [String] {
     directives[directive] ?? []
   }
 
-  /// Build the CSP header string
+  /// Build the CSP header string from all configured directives.
+  ///
+  /// - Returns: A semicolon-separated CSP header value
   public func build() -> String {
     directives.map { directive, sources in
       if sources.isEmpty {
@@ -133,7 +182,10 @@ public struct CSPBuilder {
     }.sorted().joined(separator: "; ")
   }
 
-  /// Default CSP for Velox apps
+  /// Default CSP configuration for Velox applications.
+  ///
+  /// Includes sensible defaults for app://, asset://, and ipc:// protocols
+  /// commonly used in Velox apps.
   public static var defaultCSP: CSPBuilder {
     var builder = CSPBuilder()
     builder.set(directive: "default-src", sources: ["'self'", "app:", "asset:"])
@@ -149,15 +201,41 @@ public struct CSPBuilder {
 
 // MARK: - Asset Path Validator
 
-/// Validates asset paths against configured scopes
+/// Validates file system paths against configured scope patterns.
+///
+/// The validator uses glob patterns to determine which paths are accessible
+/// through the asset:// protocol. This prevents unauthorized file access.
+///
+/// Example:
+/// ```swift
+/// let validator = AssetPathValidator(scope: [
+///   "/tmp/*",           // Allow all files in /tmp
+///   "$HOME/Documents/*" // Allow user's documents
+/// ])
+///
+/// validator.isAllowed("/tmp/file.txt")     // true
+/// validator.isAllowed("/etc/passwd")       // false
+/// ```
+///
+/// Supported patterns:
+/// - `*` matches any characters within a path segment
+/// - `?` matches a single character
+/// - `$HOME` and `~` expand to the user's home directory
+/// - `$APPDATA` expands to the app's data directory
 public struct AssetPathValidator {
   private let patterns: [String]
 
+  /// Create a validator with the given scope patterns.
+  ///
+  /// - Parameter scope: Array of glob patterns defining allowed paths
   public init(scope: [String]) {
     self.patterns = scope
   }
 
-  /// Check if a path is allowed by the scope
+  /// Check if a path is allowed by the configured scope.
+  ///
+  /// - Parameter path: The file path to validate
+  /// - Returns: true if the path matches at least one scope pattern
   public func isAllowed(_ path: String) -> Bool {
     if patterns.isEmpty {
       return false

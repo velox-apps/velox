@@ -1820,6 +1820,16 @@ public extension VeloxRuntimeWry {
     private var windowIdentifier: ObjectIdentifier?
     private var customProtocolHandlers: [VeloxCustomProtocolHandlerBox] = []
 
+    /// The internal webview identifier used by wry for custom protocol callbacks
+    public private(set) lazy var identifier: String = {
+      guard let ptr = velox_webview_identifier(raw) else {
+        return ""
+      }
+      let str = String(cString: ptr)
+      free(UnsafeMutablePointer(mutating: ptr))
+      return str
+    }()
+
     fileprivate init?(raw: UnsafeMutablePointer<VeloxWebviewHandle>?) {
       guard let raw else {
         return nil

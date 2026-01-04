@@ -12,6 +12,9 @@ public final class VeloxEventManager: @unchecked Sendable {
   /// Registered webviews by label
   private var webviews: [String: WeakWebview] = [:]
 
+  /// Mapping from internal webview IDs to labels
+  private var internalIdToLabel: [String: String] = [:]
+
   /// Backend event listeners
   private var listeners: [String: [(EventListenerHandle, EventCallback)]] = [:]
 
@@ -31,6 +34,12 @@ public final class VeloxEventManager: @unchecked Sendable {
     defer { lock.unlock() }
     webviews[label] = WeakWebview(webview)
 
+    // Also register by internal identifier for IPC lookups
+    let internalId = webview.identifier
+    if !internalId.isEmpty {
+      internalIdToLabel[internalId] = label
+    }
+
     // Inject the event bridge script
     webview.evaluate(script: VeloxEventBridge.initScript)
   }
@@ -40,14 +49,18 @@ public final class VeloxEventManager: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     webviews.removeValue(forKey: label)
+    // Clean up internal ID mapping
+    internalIdToLabel = internalIdToLabel.filter { $0.value != label }
   }
 
   /// Get all registered webview labels
   public var registeredLabels: [String] {
     lock.lock()
     defer { lock.unlock() }
-    // Clean up deallocated webviews
+    // Clean up deallocated webviews and stale internal ID mappings
     webviews = webviews.filter { $0.value.webview != nil }
+    let validLabels = Set(webviews.keys)
+    internalIdToLabel = internalIdToLabel.filter { validLabels.contains($0.value) }
     return Array(webviews.keys)
   }
 
@@ -212,15 +225,25 @@ internal final class WebviewHandleImpl: WebviewHandle, @unchecked Sendable {
 // MARK: - VeloxEventManager Webview Handle Support
 
 public extension VeloxEventManager {
-  /// Get a webview handle for a given identifier
+  /// Get a webview handle for a given identifier.
+  ///
+  /// The identifier can be either:
+  /// - A user-provided label (e.g., "main")
+  /// - An internal webview ID from wry (used in IPC requests)
   func getWebviewHandle(_ id: String) -> WebviewHandle? {
     lock.lock()
     defer { lock.unlock() }
 
-    // Check if webview exists with this ID
+    // First try direct label lookup
     if webviews[id]?.webview != nil {
       return WebviewHandleImpl(id: id, eventManager: self)
     }
+
+    // Then try internal ID to label mapping (for IPC requests)
+    if let label = internalIdToLabel[id], webviews[label]?.webview != nil {
+      return WebviewHandleImpl(id: label, eventManager: self)
+    }
+
     return nil
   }
 
