@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-import XCTest
+import Foundation
+import Testing
 
 @testable import VeloxRuntime
 @testable import VeloxRuntimeWry
 
 // MARK: - Permission Manager Tests
 
-final class PermissionManagerTests: XCTestCase {
+@Suite("PermissionManager")
+struct PermissionManagerTests {
 
   // MARK: - Default Policy Tests
 
-  func testDefaultAllowPolicyForAppCommands() {
+  @Test("Default allow policy for app commands")
+  func defaultAllowPolicyForAppCommands() {
     let manager = PermissionManager()
 
     // With no capabilities configured, app commands use default allow
@@ -22,16 +25,11 @@ final class PermissionManagerTests: XCTestCase {
       webviewId: "main"
     )
 
-    switch result {
-    case .success:
-      // Expected - default is allow for app commands
-      break
-    case .failure:
-      XCTFail("App commands should be allowed by default when no capabilities configured")
-    }
+    #expect(result.isSuccess, "App commands should be allowed by default when no capabilities configured")
   }
 
-  func testDefaultDenyPolicyForPluginCommands() {
+  @Test("Default deny policy for plugin commands")
+  func defaultDenyPolicyForPluginCommands() {
     let manager = PermissionManager()
 
     // Configure with a capability so default policy applies
@@ -47,18 +45,13 @@ final class PermissionManagerTests: XCTestCase {
       webviewId: "main"
     )
 
-    switch result {
-    case .success:
-      XCTFail("Plugin commands should be denied by default")
-    case .failure:
-      // Expected - default is deny for plugin commands
-      break
-    }
+    #expect(result.isFailure, "Plugin commands should be denied by default")
   }
 
   // MARK: - Capability Targeting Tests
 
-  func testCapabilityWindowTargeting() {
+  @Test("Capability window targeting")
+  func capabilityWindowTargeting() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -73,17 +66,18 @@ final class PermissionManagerTests: XCTestCase {
       command: "secret",
       webviewId: "main"
     )
-    XCTAssertTrue(mainResult.isSuccess, "Main window should have access to 'secret'")
+    #expect(mainResult.isSuccess, "Main window should have access to 'secret'")
 
     // Other window should not
     let otherResult = manager.checkPermission(
       command: "secret",
       webviewId: "settings"
     )
-    XCTAssertTrue(otherResult.isFailure, "Settings window should not have access to 'secret'")
+    #expect(otherResult.isFailure, "Settings window should not have access to 'secret'")
   }
 
-  func testCapabilityWithNoTargetsAppliesToAll() {
+  @Test("Capability with no targets applies to all windows")
+  func capabilityWithNoTargetsAppliesToAll() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -93,20 +87,21 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Any webview should have access
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "ping", webviewId: "main").isSuccess,
       "Main should have access")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "ping", webviewId: "settings").isSuccess,
       "Settings should have access")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "ping", webviewId: "any").isSuccess,
       "Any webview should have access")
   }
 
   // MARK: - Permission Allow/Deny Tests
 
-  func testDenyTakesPriorityOverAllow() {
+  @Test("Deny takes priority over allow")
+  func denyTakesPriorityOverAllow() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -123,17 +118,18 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Read should be allowed
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:fs:read", webviewId: "main").isSuccess,
       "Read should be allowed")
 
     // Delete should be denied (deny takes priority)
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:fs:delete", webviewId: "main").isFailure,
       "Delete should be denied")
   }
 
-  func testWildcardPermission() {
+  @Test("Wildcard permission grants all commands")
+  func wildcardPermission() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -144,15 +140,16 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Should allow any command
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "anything", webviewId: "admin").isSuccess,
       "Wildcard should allow any command")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:fs:delete", webviewId: "admin").isSuccess,
       "Wildcard should allow plugin commands too")
   }
 
-  func testPluginWildcardPermission() {
+  @Test("Plugin wildcard permission")
+  func pluginWildcardPermission() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -161,20 +158,21 @@ final class PermissionManagerTests: XCTestCase {
         permissions: ["plugin:analytics:*"]
       ))
 
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:analytics:track", webviewId: "main").isSuccess,
       "Should allow analytics:track")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:analytics:stats", webviewId: "main").isSuccess,
       "Should allow analytics:stats")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:fs:read", webviewId: "main").isFailure,
       "Should not allow fs:read")
   }
 
   // MARK: - Scope Tests
 
-  func testPathScopeWithGlobs() {
+  @Test("Path scope with glob patterns")
+  func pathScopeWithGlobs() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -192,7 +190,7 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Allowed path
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "fs:read",
         webviewId: "main",
@@ -201,7 +199,7 @@ final class PermissionManagerTests: XCTestCase {
       "/tmp/file.txt should be allowed")
 
     // Disallowed path
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "fs:read",
         webviewId: "main",
@@ -210,7 +208,8 @@ final class PermissionManagerTests: XCTestCase {
       "/etc/passwd should be denied")
   }
 
-  func testURLScopeWithPatterns() {
+  @Test("URL scope with patterns")
+  func urlScopeWithPatterns() {
     let manager = PermissionManager()
 
     manager.registerCapability(
@@ -228,7 +227,7 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Allowed URLs
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "http:fetch",
         webviewId: "main",
@@ -237,7 +236,7 @@ final class PermissionManagerTests: XCTestCase {
       "api.example.com should be allowed")
 
     // Disallowed URL
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "http:fetch",
         webviewId: "main",
@@ -246,7 +245,8 @@ final class PermissionManagerTests: XCTestCase {
       "evil.com should be denied")
   }
 
-  func testCustomScopeValidator() {
+  @Test("Custom scope validator")
+  func customScopeValidator() {
     let manager = PermissionManager()
 
     // Register custom validator for file size
@@ -268,7 +268,7 @@ final class PermissionManagerTests: XCTestCase {
       ))
 
     // Under limit
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "upload",
         webviewId: "main",
@@ -277,7 +277,7 @@ final class PermissionManagerTests: XCTestCase {
       "5MB upload should be allowed")
 
     // Over limit
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(
         command: "upload",
         webviewId: "main",
@@ -288,7 +288,8 @@ final class PermissionManagerTests: XCTestCase {
 
   // MARK: - Configuration Loading
 
-  func testConfigureFromSecurityConfig() {
+  @Test("Configure from SecurityConfig")
+  func configureFromSecurityConfig() {
     let manager = PermissionManager()
 
     manager.configure(
@@ -310,17 +311,18 @@ final class PermissionManagerTests: XCTestCase {
     )
 
     // Should work based on loaded config
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "greet", webviewId: "main").isSuccess,
       "Greet should be allowed for main window")
-    XCTAssertTrue(
+    #expect(
       manager.checkPermission(command: "plugin:analytics:track", webviewId: "main").isSuccess,
       "Analytics track should be allowed")
   }
 
   // MARK: - Command Registry Integration
 
-  func testCommandRegistryWithPermissions() {
+  @Test("CommandRegistry integration with permissions")
+  func commandRegistryWithPermissions() {
     let registry = CommandRegistry()
     registry.register("greet", returning: String.self) { _ in "Hello!" }
     registry.register("secret", returning: String.self) { _ in "Secret data" }
@@ -344,7 +346,7 @@ final class PermissionManagerTests: XCTestCase {
 
     // Allowed command
     let result1 = registry.invoke("greet", context: context, permissionManager: manager)
-    XCTAssertTrue(result1.isSuccess, "Greet should succeed")
+    #expect(result1.isSuccess, "Greet should succeed")
 
     // Denied command
     let context2 = CommandContext(
@@ -356,55 +358,61 @@ final class PermissionManagerTests: XCTestCase {
       webview: nil
     )
     let result2 = registry.invoke("secret", context: context2, permissionManager: manager)
-    switch result2 {
-    case .error(let error):
-      XCTAssertEqual(error.code, "PermissionDenied", "Should return PermissionDenied error")
-    default:
-      XCTFail("Secret should be denied")
+
+    if case .error(let error) = result2 {
+      #expect(error.code == "PermissionDenied", "Should return PermissionDenied error")
+    } else {
+      Issue.record("Secret should be denied")
     }
   }
 }
 
 // MARK: - Permission Scope Tests
 
-final class PermissionScopeTests: XCTestCase {
+@Suite("PermissionScope")
+struct PermissionScopeTests {
 
-  func testAnyScopeAllowsAll() {
+  @Test("Any scope allows all values")
+  func anyScopeAllowsAll() {
     let scope = PermissionScope.any
-    XCTAssertTrue(scope.allows("anything"))
-    XCTAssertTrue(scope.allows("/path/to/file"))
-    XCTAssertTrue(scope.allows(""))
+    #expect(scope.allows("anything"))
+    #expect(scope.allows("/path/to/file"))
+    #expect(scope.allows(""))
   }
 
-  func testValuesScope() {
+  @Test("Values scope matches exact values")
+  func valuesScope() {
     let scope = PermissionScope.values(["read", "write", "execute"])
 
-    XCTAssertTrue(scope.allows("read"))
-    XCTAssertTrue(scope.allows("write"))
-    XCTAssertFalse(scope.allows("delete"))
-    XCTAssertFalse(scope.allows("READ"))  // case sensitive
+    #expect(scope.allows("read"))
+    #expect(scope.allows("write"))
+    #expect(!scope.allows("delete"))
+    #expect(!scope.allows("READ"))  // case sensitive
   }
 
-  func testGlobsScope() {
+  @Test("Globs scope matches patterns")
+  func globsScope() {
     let scope = PermissionScope.globs(["/tmp/*", "*.txt"])
 
-    XCTAssertTrue(scope.allows("/tmp/file"))
-    XCTAssertTrue(scope.allows("/tmp/subdir/file"))
-    XCTAssertTrue(scope.allows("document.txt"))
-    XCTAssertFalse(scope.allows("/etc/passwd"))
+    #expect(scope.allows("/tmp/file"))
+    #expect(scope.allows("/tmp/subdir/file"))
+    #expect(scope.allows("document.txt"))
+    #expect(!scope.allows("/etc/passwd"))
   }
 
-  func testURLsScope() {
+  @Test("URLs scope matches URL patterns")
+  func urlsScope() {
     let scope = PermissionScope.urls([
       "https://api.example.com/*"
     ])
 
-    XCTAssertTrue(scope.allows("https://api.example.com/users"))
-    XCTAssertTrue(scope.allows("https://api.example.com/data/123"))
-    XCTAssertFalse(scope.allows("https://evil.com/api"))
+    #expect(scope.allows("https://api.example.com/users"))
+    #expect(scope.allows("https://api.example.com/data/123"))
+    #expect(!scope.allows("https://evil.com/api"))
   }
 
-  func testScopeCodable() throws {
+  @Test("Scope is Codable")
+  func scopeCodable() throws {
     let scope = PermissionScope.globs(["/tmp/*", "/var/*"])
 
     let encoder = JSONEncoder()
@@ -413,38 +421,42 @@ final class PermissionScopeTests: XCTestCase {
     let decoder = JSONDecoder()
     let decoded = try decoder.decode(PermissionScope.self, from: data)
 
-    XCTAssertEqual(scope, decoded)
+    #expect(scope == decoded)
   }
 }
 
 // MARK: - Capability Config Tests
 
-final class CapabilityConfigTests: XCTestCase {
+@Suite("CapabilityConfig")
+struct CapabilityConfigTests {
 
-  func testCapabilityTargetsWebview() {
+  @Test("Capability targets specific webviews")
+  func capabilityTargetsWebview() {
     let capability = CapabilityConfig(
       identifier: "test",
       windows: ["main", "settings"],
       permissions: ["greet"]
     )
 
-    XCTAssertTrue(capability.targetsWebview("main"))
-    XCTAssertTrue(capability.targetsWebview("settings"))
-    XCTAssertFalse(capability.targetsWebview("other"))
+    #expect(capability.targetsWebview("main"))
+    #expect(capability.targetsWebview("settings"))
+    #expect(!capability.targetsWebview("other"))
   }
 
-  func testCapabilityWithNoTargetsAppliesToAll() {
+  @Test("Capability with no targets applies to all")
+  func capabilityWithNoTargetsAppliesToAll() {
     let capability = CapabilityConfig(
       identifier: "global",
       permissions: ["ping"]
     )
 
-    XCTAssertTrue(capability.targetsWebview("main"))
-    XCTAssertTrue(capability.targetsWebview("any"))
-    XCTAssertTrue(capability.targetsWebview("window123"))
+    #expect(capability.targetsWebview("main"))
+    #expect(capability.targetsWebview("any"))
+    #expect(capability.targetsWebview("window123"))
   }
 
-  func testCapabilityCodable() throws {
+  @Test("Capability is Codable")
+  func capabilityCodable() throws {
     let capability = CapabilityConfig(
       identifier: "test",
       description: "Test capability",
@@ -458,14 +470,14 @@ final class CapabilityConfigTests: XCTestCase {
     let decoder = JSONDecoder()
     let decoded = try decoder.decode(CapabilityConfig.self, from: data)
 
-    XCTAssertEqual(decoded.identifier, capability.identifier)
-    XCTAssertEqual(decoded.description, capability.description)
-    XCTAssertEqual(decoded.windows, capability.windows)
-    XCTAssertEqual(decoded.permissions, capability.permissions)
+    #expect(decoded.identifier == capability.identifier)
+    #expect(decoded.description == capability.description)
+    #expect(decoded.windows == capability.windows)
+    #expect(decoded.permissions == capability.permissions)
   }
 }
 
-// MARK: - Helper Extension
+// MARK: - Helper Extensions
 
 extension Result {
   var isSuccess: Bool {
