@@ -1215,6 +1215,23 @@ public extension VeloxRuntimeWry {
       unmanaged.release()
     }
 
+    /// Runs the event loop until `.exit` is returned by the handler.
+    public func run(_ handler: @escaping @Sendable (_ event: Event) -> ControlFlow) {
+      pump(handler)
+    }
+
+    /// Runs the event loop with a default handler that exits on close requests.
+    public func run() {
+      pump { event in
+        switch event {
+        case .windowCloseRequested, .userExit, .exitRequested, .exit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+    }
+
     /// Creates a proxy that can be used to send user events such as exit requests.
     public func makeProxy() -> EventLoopProxy? {
       guard let raw else {

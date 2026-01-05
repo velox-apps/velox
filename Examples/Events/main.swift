@@ -257,7 +257,6 @@ struct BackendResponsePayload: Codable, Sendable {
 
 final class AppState: @unchecked Sendable {
   var counter: Int = 0
-  var shouldExit = false
   let lock = NSLock()
 
   func incrementCounter() -> Int {
@@ -373,35 +372,25 @@ func main() {
   print("[App] Events demo started")
   print("[App] Backend will emit counter updates every second")
 
-  // Start a timer to emit counter updates
-  var lastEmitTime = Date()
-
-  while !state.shouldExit {
-    // Emit counter update every second
-    let now = Date()
-    if now.timeIntervalSince(lastEmitTime) >= 1.0 {
-      lastEmitTime = now
-      let value = state.incrementCounter()
-      do {
-        try eventManager.emit("counter-update", payload: CounterPayload(value: value))
-      } catch {
-        print("[Backend] Failed to emit counter update: \(error)")
-      }
+  // Emit counter updates every second.
+  let counterTimer = Timer(timeInterval: 1.0, repeats: true) { _ in
+    let value = state.incrementCounter()
+    do {
+      try eventManager.emit("counter-update", payload: CounterPayload(value: value))
+    } catch {
+      print("[Backend] Failed to emit counter update: \(error)")
     }
+  }
+  RunLoop.main.add(counterTimer, forMode: .common)
 
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.shouldExit = true
-        return .exit
-      default:
-        // Use poll to allow timer to run between events
-        return .poll
-      }
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      counterTimer.invalidate()
+      return .exit
+    default:
+      return .wait
     }
-
-    // Small sleep to prevent busy-waiting
-    Thread.sleep(forTimeInterval: 0.01)
   }
 
   print("[App] Events demo exiting")

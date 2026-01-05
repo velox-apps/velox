@@ -427,6 +427,32 @@ public final class VeloxAppBuilder {
     return result
   }
 
+  /// Create an event loop, build the configured windows, and run until exit.
+  public func run(
+    handler: (@Sendable (VeloxRuntimeWry.Event) -> VeloxRuntimeWry.ControlFlow)? = nil
+  ) throws {
+    guard Thread.isMainThread else {
+      throw VeloxRuntimeError.failed(description: "VeloxAppBuilder.run must be called on the main thread")
+    }
+    guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
+      throw VeloxRuntimeError.unsupported
+    }
+
+    let windows = build(eventLoop: eventLoop)
+    // Keep window/webview handles alive for the duration of the run loop.
+    withExtendedLifetime(windows) {
+      #if os(macOS)
+      eventLoop.showApplication()
+      #endif
+
+      if let handler {
+        eventLoop.run(handler)
+      } else {
+        eventLoop.run()
+      }
+    }
+  }
+
   /// Create an app protocol handler that serves static content with security headers
   ///
   /// This method creates a protocol handler for serving static HTML content with

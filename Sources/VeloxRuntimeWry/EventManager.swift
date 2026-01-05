@@ -64,6 +64,31 @@ public final class VeloxEventManager: @unchecked Sendable {
     return Array(webviews.keys)
   }
 
+  /// Resolve a webview identifier to its user-friendly label.
+  ///
+  /// The identifier can be either a user-provided label or an internal wry ID.
+  /// Returns the label if found, or the original identifier if no mapping exists.
+  ///
+  /// - Parameter id: The webview identifier (internal ID or label)
+  /// - Returns: The user-friendly label
+  public func resolveLabel(_ id: String) -> String {
+    lock.lock()
+    defer { lock.unlock() }
+
+    // If it's already a known label, return it
+    if webviews[id] != nil {
+      return id
+    }
+
+    // Try to map internal ID to label
+    if let label = internalIdToLabel[id] {
+      return label
+    }
+
+    // Return the original ID if no mapping found
+    return id
+  }
+
   // MARK: - Event Emission
 
   /// Emit an event to all registered webviews

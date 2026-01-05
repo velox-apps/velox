@@ -396,12 +396,22 @@ let htmlContent = """
 
     <script>
       async function invoke(command, args = {}) {
-        const response = await fetch(`ipc://localhost/${command}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(args)
-        });
-        const data = await response.json();
+        let data;
+        if (window.Velox && typeof window.Velox.invoke === 'function') {
+          try {
+            const result = await window.Velox.invoke(command, args);
+            data = { result };
+          } catch (e) {
+            data = { error: e && e.message ? e.message : String(e) };
+          }
+        } else {
+          const response = await fetch(`ipc://localhost/${command}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(args)
+          });
+          data = await response.json();
+        }
         console.log(command, args, '->', data);
 
         // Special handling for hide - show again after 3 seconds
@@ -498,21 +508,13 @@ func main() {
   #endif
 
   // Run event loop
-  final class AppState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let state = AppState()
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      return .exit
 
-  while !state.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.shouldExit = true
-        return .exit
-
-      default:
-        return .wait
-      }
+    default:
+      return .wait
     }
   }
 }

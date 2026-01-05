@@ -1941,42 +1941,22 @@ pub extern "C" fn velox_window_build(
     let cfg = unsafe { config.as_ref().copied().unwrap_or_default() };
 
     let build_result = catch_unwind(AssertUnwindSafe(|| {
-        let mut result = None;
-        let mut built = false;
-        event_loop
-            .event_loop
-            .run_return(|event, target, control_flow| {
-                // Build window on first event (Init, Poll, or any NewEvents)
-                // Init only fires once per event loop lifetime, so we can't rely on it
-                // for creating multiple windows
-                if !built {
-                    if let Event::NewEvents(_) = event {
-                        built = true;
-                        let mut builder = TaoWindowBuilder::new();
+        let mut builder = TaoWindowBuilder::new();
 
-                        if let Some(title) = opt_cstring(cfg.title) {
-                            builder = builder.with_title(title);
-                        }
+        if let Some(title) = opt_cstring(cfg.title) {
+            builder = builder.with_title(title);
+        }
 
-                        if cfg.width > 0 && cfg.height > 0 {
-                            builder = builder
-                                .with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
-                        }
+        if cfg.width > 0 && cfg.height > 0 {
+            builder =
+                builder.with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
+        }
 
-                        result = Some(builder.build(target));
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-                }
-
-                *control_flow = ControlFlow::Exit;
-            });
-
-        result
+        builder.build(&event_loop.event_loop)
     }));
 
     match build_result {
-        Ok(Some(Ok(window))) => {
+        Ok(Ok(window)) => {
             let id_string = format!("{:?}", window.id());
             let identifier = CString::new(id_string).unwrap_or_else(|_| {
                 CString::new("velox-window").expect("static string has no nulls")

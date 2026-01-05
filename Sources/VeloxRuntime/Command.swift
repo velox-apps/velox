@@ -389,7 +389,8 @@ public extension CommandResult {
       // Wrap in result object
       if let data = try? encoder.encode(AnyEncodable(value)) {
         // Create {"result": <value>} wrapper
-        if let valueJSON = try? JSONSerialization.jsonObject(with: data),
+        // Use .fragmentsAllowed to parse primitives like strings, numbers, booleans, null
+        if let valueJSON = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed),
            let wrappedData = try? JSONSerialization.data(withJSONObject: ["result": valueJSON])
         {
           return wrappedData

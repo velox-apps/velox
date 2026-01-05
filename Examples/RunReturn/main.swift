@@ -107,11 +107,6 @@ func main() {
     fatalError("Failed to create webview")
   }
 
-  final class AppState: @unchecked Sendable {
-    var activated = false
-  }
-  let state = AppState()
-
   // Record start time
   let startTime = Date()
 
@@ -127,16 +122,13 @@ func main() {
   #endif
 
   // Run the event loop using run_return pattern - will exit when window closes
-  while !state.activated {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.activated = true
-        return .exit
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      return .exit
 
-      default:
-        return .wait
-      }
+    default:
+      return .wait
     }
   }
 

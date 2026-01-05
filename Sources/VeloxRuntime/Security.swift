@@ -12,6 +12,7 @@ import Foundation
 /// before any other scripts run. It handles:
 /// - Prototype freezing to prevent prototype pollution attacks
 /// - Channel API injection for backend-to-frontend streaming
+/// - Async invoke helper for deferred command responses
 ///
 /// Example:
 /// ```swift
@@ -41,6 +42,9 @@ public enum SecurityScriptGenerator {
     if includeChannelAPI {
       scripts.append(channelFrontendScript)
     }
+
+    // Include async invoke helper
+    scripts.append(VeloxInvokeBridge.initScript)
 
     return scripts.joined(separator: "\n")
   }

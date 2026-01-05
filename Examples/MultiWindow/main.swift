@@ -203,27 +203,18 @@ func main() {
   #endif
 
   // Run event loop using run_return pattern
-  final class AppState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let state = AppState()
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested:
+      // For simplicity, exit when any window closes
+      // A more sophisticated version would track which window closed
+      return .exit
 
-  while !state.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested:
-        // For simplicity, exit when any window closes
-        // A more sophisticated version would track which window closed
-        state.shouldExit = true
-        return .exit
+    case .userExit:
+      return .exit
 
-      case .userExit:
-        state.shouldExit = true
-        return .exit
-
-      default:
-        return .wait
-      }
+    default:
+      return .wait
     }
   }
 }

@@ -31,11 +31,14 @@ public func createCommandHandler(
     // Create webview handle if event manager is available
     let webviewHandle = eventManager?.getWebviewHandle(request.webviewIdentifier)
 
+    // Resolve the internal webview ID to user-friendly label for permission checking
+    let webviewLabel = eventManager?.resolveLabel(request.webviewIdentifier) ?? request.webviewIdentifier
+
     let context = CommandContext(
       command: command,
       rawBody: request.body,
       headers: request.headers,
-      webviewId: request.webviewIdentifier,
+      webviewId: webviewLabel,
       stateContainer: stateContainer,
       webview: webviewHandle
     )

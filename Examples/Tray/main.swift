@@ -260,38 +260,29 @@ func main() {
   print("[Tray] Look for 'Velox' in your menu bar")
 
   // Run event loop
-  final class AppState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let state = AppState()
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      return .exit
 
-  while !state.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.shouldExit = true
+    case .menuEvent(let menuId):
+      print("[Tray] Menu event: \(menuId)")
+      if menuId == "quit" {
         return .exit
-
-      case .menuEvent(let menuId):
-        print("[Tray] Menu event: \(menuId)")
-        if menuId == "quit" {
-          state.shouldExit = true
-          return .exit
-        } else if menuId == "show-window" {
-          window.setVisible(true)
-          window.focus()
-        } else if menuId == "hide-window" {
-          window.setVisible(false)
-        }
-        return .wait
-
-      case .trayEvent(let event):
-        print("[Tray] Tray event: \(event.type) at \(event.position?.x ?? 0), \(event.position?.y ?? 0)")
-        return .wait
-
-      default:
-        return .wait
+      } else if menuId == "show-window" {
+        window.setVisible(true)
+        window.focus()
+      } else if menuId == "hide-window" {
+        window.setVisible(false)
       }
+      return .wait
+
+    case .trayEvent(let event):
+      print("[Tray] Tray event: \(event.type) at \(event.position?.x ?? 0), \(event.position?.y ?? 0)")
+      return .wait
+
+    default:
+      return .wait
     }
   }
 

@@ -136,37 +136,29 @@ func main() {
   print("Created \(webviews.count) child webviews. Press Cmd+Q to exit.")
 
   // Run event loop using run_return pattern
-  final class AppState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let state = AppState()
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      return .exit
 
-  while !state.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.shouldExit = true
-        return .exit
-
-      case .windowResized(_, let size):
-        // Resize child webviews proportionally
-        let newPanelWidth = size.width / 2
-        let newPanelHeight = size.height / 2
-        for (index, webview) in webviews.enumerated() {
-          let row = index / 2
-          let col = index % 2
-          webview.setBounds(
-            x: Double(col) * newPanelWidth,
-            y: Double(row) * newPanelHeight,
-            width: newPanelWidth,
-            height: newPanelHeight
-          )
-        }
-        return .wait
-
-      default:
-        return .wait
+    case .windowResized(_, let size):
+      // Resize child webviews proportionally
+      let newPanelWidth = size.width / 2
+      let newPanelHeight = size.height / 2
+      for (index, webview) in webviews.enumerated() {
+        let row = index / 2
+        let col = index % 2
+        webview.setBounds(
+          x: Double(col) * newPanelWidth,
+          y: Double(row) * newPanelHeight,
+          width: newPanelWidth,
+          height: newPanelHeight
+        )
       }
+      return .wait
+
+    default:
+      return .wait
     }
   }
 }

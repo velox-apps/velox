@@ -330,21 +330,13 @@ func main() {
   print("[State] Application started")
 
   // Run event loop
-  final class RunState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let runState = RunState()
+  eventLoop.run { event in
+    switch event {
+    case .windowCloseRequested, .userExit:
+      return .exit
 
-  while !runState.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        runState.shouldExit = true
-        return .exit
-
-      default:
-        return .wait
-      }
+    default:
+      return .wait
     }
   }
 

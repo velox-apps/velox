@@ -148,17 +148,19 @@ func main() {
     fatalError("HelloWorld2 must run on the main thread")
   }
 
-  // Load configuration from velox.json
-  let config: VeloxConfig
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  var appBuilder: VeloxAppBuilder
+  var assets: AssetBundle
+
   do {
-    // Try loading from Examples/HelloWorld2 directory
-    let exampleDir = URL(fileURLWithPath: "Examples/HelloWorld2")
-    config = try VeloxConfig.load(from: exampleDir)
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+    assets = AssetBundle(frontendDist: appBuilder.config.build?.frontendDist)
+    let config = appBuilder.config
     print("[Config] Loaded: \(config.productName ?? "Unknown") v\(config.version ?? "?")")
   } catch {
     print("[Config] Failed to load velox.json: \(error)")
     print("[Config] Using default configuration")
-    config = VeloxConfig(
+    let config = VeloxConfig(
       productName: "HelloWorld2",
       version: "1.0.0",
       identifier: "com.velox.helloworld2",
@@ -172,74 +174,42 @@ func main() {
         )
       ])
     )
+    assets = AssetBundle(frontendDist: config.build?.frontendDist)
+    appBuilder = VeloxAppBuilder(config: config)
   }
 
-  // Initialize asset bundle using frontendDist from config
-  let assets = AssetBundle(frontendDist: config.build?.frontendDist)
+  do {
+    try appBuilder
+      .registerProtocol("ipc") { request in
+        handleInvoke(request: request)
+      }
+      .registerProtocol("app") { request in
+        guard let url = URL(string: request.url) else {
+          return VeloxRuntimeWry.CustomProtocol.Response(
+            status: 400,
+            headers: ["Content-Type": "text/plain"],
+            body: Data("Invalid URL".utf8)
+          )
+        }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
+        if let asset = assets.loadAsset(path: url.path) {
+          return VeloxRuntimeWry.CustomProtocol.Response(
+            status: 200,
+            headers: ["Content-Type": asset.mimeType],
+            mimeType: asset.mimeType,
+            body: asset.data
+          )
+        }
 
-  // Build app using VeloxAppBuilder
-  let appBuilder = VeloxAppBuilder(config: config)
-    .registerProtocol("ipc") { request in
-      handleInvoke(request: request)
-    }
-    .registerProtocol("app") { request in
-      guard let url = URL(string: request.url) else {
         return VeloxRuntimeWry.CustomProtocol.Response(
-          status: 400,
+          status: 404,
           headers: ["Content-Type": "text/plain"],
-          body: Data("Invalid URL".utf8)
+          body: Data("Asset not found: \(url.path)".utf8)
         )
       }
-
-      if let asset = assets.loadAsset(path: url.path) {
-        return VeloxRuntimeWry.CustomProtocol.Response(
-          status: 200,
-          headers: ["Content-Type": asset.mimeType],
-          mimeType: asset.mimeType,
-          body: asset.data
-        )
-      }
-
-      return VeloxRuntimeWry.CustomProtocol.Response(
-        status: 404,
-        headers: ["Content-Type": "text/plain"],
-        body: Data("Asset not found: \(url.path)".utf8)
-      )
-    }
-
-  let windows = appBuilder.build(eventLoop: eventLoop)
-
-  guard !windows.isEmpty else {
-    fatalError("No windows were created")
-  }
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  print("[App] Created \(windows.count) window(s)")
-
-  // Run event loop
-  final class AppState: @unchecked Sendable {
-    var shouldExit = false
-  }
-  let state = AppState()
-
-  while !state.shouldExit {
-    eventLoop.pump { event in
-      switch event {
-      case .windowCloseRequested, .userExit:
-        state.shouldExit = true
-        return .exit
-
-      default:
-        return .wait
-      }
-    }
+      .run()
+  } catch {
+    fatalError("HelloWorld2 failed to start: \(error)")
   }
 }
 

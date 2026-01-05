@@ -21,6 +21,38 @@ let package = Package(
       name: "VeloxRuntimeWry",
       targets: ["VeloxRuntimeWry"]
     ),
+    .library(
+      name: "VeloxPlugins",
+      targets: ["VeloxPlugins"]
+    ),
+    .library(
+      name: "VeloxPluginDialog",
+      targets: ["VeloxPluginDialog"]
+    ),
+    .library(
+      name: "VeloxPluginClipboard",
+      targets: ["VeloxPluginClipboard"]
+    ),
+    .library(
+      name: "VeloxPluginNotification",
+      targets: ["VeloxPluginNotification"]
+    ),
+    .library(
+      name: "VeloxPluginShell",
+      targets: ["VeloxPluginShell"]
+    ),
+    .library(
+      name: "VeloxPluginOS",
+      targets: ["VeloxPluginOS"]
+    ),
+    .library(
+      name: "VeloxPluginProcess",
+      targets: ["VeloxPluginProcess"]
+    ),
+    .library(
+      name: "VeloxPluginOpener",
+      targets: ["VeloxPluginOpener"]
+    ),
     .executable(
       name: "HelloWorld",
       targets: ["HelloWorld"]
@@ -94,6 +126,10 @@ let package = Package(
       targets: ["Plugins"]
     ),
     .executable(
+      name: "BuiltinPlugins",
+      targets: ["BuiltinPlugins"]
+    ),
+    .executable(
       name: "Permissions",
       targets: ["Permissions"]
     ),
@@ -155,6 +191,54 @@ let package = Package(
         .linkedLibrary("velox_runtime_wry_ffi")
       ]
     ),
+    .target(
+      name: "VeloxPluginDialog",
+      dependencies: ["VeloxRuntime", "VeloxRuntimeWry"],
+      path: "Sources/VeloxPluginDialog"
+    ),
+    .target(
+      name: "VeloxPluginClipboard",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginClipboard"
+    ),
+    .target(
+      name: "VeloxPluginNotification",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginNotification"
+    ),
+    .target(
+      name: "VeloxPluginShell",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginShell"
+    ),
+    .target(
+      name: "VeloxPluginOS",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginOS"
+    ),
+    .target(
+      name: "VeloxPluginProcess",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginProcess"
+    ),
+    .target(
+      name: "VeloxPluginOpener",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginOpener"
+    ),
+    .target(
+      name: "VeloxPlugins",
+      dependencies: [
+        "VeloxPluginDialog",
+        "VeloxPluginClipboard",
+        "VeloxPluginNotification",
+        "VeloxPluginShell",
+        "VeloxPluginOS",
+        "VeloxPluginProcess",
+        "VeloxPluginOpener"
+      ],
+      path: "Sources/VeloxPlugins"
+    ),
     .testTarget(
       name: "VeloxRuntimeWryTests",
       dependencies: ["VeloxRuntimeWry"],
@@ -163,7 +247,10 @@ let package = Package(
     .executableTarget(
       name: "HelloWorld",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/HelloWorld"
+      path: "Examples/HelloWorld",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "State",
@@ -268,6 +355,11 @@ let package = Package(
       name: "Plugins",
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/Plugins"
+    ),
+    .executableTarget(
+      name: "BuiltinPlugins",
+      dependencies: ["VeloxRuntimeWry", "VeloxPlugins"],
+      path: "Examples/BuiltinPlugins"
     ),
     .executableTarget(
       name: "Permissions",
