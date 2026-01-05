@@ -432,20 +432,12 @@ struct InitCommand: AsyncParsableCommand {
         #endif
 
         // Event loop
-        final class AppState: @unchecked Sendable {
-          var shouldExit = false
-        }
-        let state = AppState()
-
-        while !state.shouldExit {
-          eventLoop.pump { event in
-            switch event {
-            case .windowCloseRequested, .userExit:
-              state.shouldExit = true
-              return .exit
-            default:
-              return .wait
-            }
+        eventLoop.run { event in
+          switch event {
+          case .windowCloseRequested, .userExit:
+            return .exit
+          default:
+            return .wait
           }
         }
       }
