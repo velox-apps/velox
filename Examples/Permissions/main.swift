@@ -75,6 +75,20 @@ func mainWindowHTML() -> String {
 
     <script>
       async function invoke(cmd, args = {}) {
+        if (window.Velox && typeof window.Velox.invoke === 'function') {
+          try {
+            const result = await window.Velox.invoke(cmd, args);
+            return { ok: true, data: { result } };
+          } catch (e) {
+            return {
+              ok: false,
+              data: {
+                error: e && e.code ? e.code : 'Error',
+                message: e && e.message ? e.message : String(e)
+              }
+            };
+          }
+        }
         const body = JSON.stringify(args);
         const response = await fetch(`ipc://localhost/${cmd}`, {
           method: 'POST',
@@ -166,6 +180,20 @@ func limitedWindowHTML() -> String {
 
     <script>
       async function invoke(cmd, args = {}) {
+        if (window.Velox && typeof window.Velox.invoke === 'function') {
+          try {
+            const result = await window.Velox.invoke(cmd, args);
+            return { ok: true, data: { result } };
+          } catch (e) {
+            return {
+              ok: false,
+              data: {
+                error: e && e.code ? e.code : 'Error',
+                message: e && e.message ? e.message : String(e)
+              }
+            };
+          }
+        }
         const body = JSON.stringify(args);
         const response = await fetch(`ipc://localhost/${cmd}`, {
           method: 'POST',

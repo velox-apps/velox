@@ -540,10 +540,17 @@ let app = VeloxAppBuilder(config: config)
 
 ### IPC Communication
 
-Both approaches use custom protocols for IPC between Swift and the webview:
+Both approaches use custom protocols for IPC between Swift and the webview. Velox injects a
+`window.Velox.invoke` helper that supports both immediate and deferred command responses:
 
 ```javascript
-// JavaScript: invoke a Swift command
+// JavaScript: invoke a Swift command (preferred)
+const message = await window.Velox.invoke('greet', { name: 'World' });
+```
+
+If you need a custom helper, you can still use `fetch` for immediate responses:
+
+```javascript
 async function invoke(command, args = {}) {
   const response = await fetch(`ipc://localhost/${command}`, {
     method: 'POST',
@@ -552,9 +559,28 @@ async function invoke(command, args = {}) {
   });
   return (await response.json()).result;
 }
+```
 
-// Call Swift's greet function
-const message = await invoke('greet', { name: 'World' });
+#### Deferred Responses
+
+To return after the IPC handler completes (for modal dialogs or long tasks), defer the response
+and resolve it later. `window.Velox.invoke` will await the final result automatically:
+
+```swift
+struct DelayedEchoArgs: Codable, Sendable { let message: String; let delayMs: Int? }
+
+commands.register("delayed_echo", args: DelayedEchoArgs.self, returning: DeferredCommandResponse.self) { args, ctx in
+  let deferred = try ctx.deferResponse()
+  let delay = max(0, args.delayMs ?? 500)
+  DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
+    deferred.responder.resolve(args.message)
+  }
+  return deferred.pending
+}
+```
+
+```javascript
+const reply = await window.Velox.invoke('delayed_echo', { message: 'Hello later', delayMs: 800 });
 ```
 
 #### @VeloxCommand Macro (Recommended)

@@ -226,6 +226,17 @@ let htmlContent = """
   <script>
     // Helper to invoke backend commands
     async function invoke(cmd, args = {}) {
+      if (window.Velox && typeof window.Velox.invoke === 'function') {
+        try {
+          const result = await window.Velox.invoke(cmd, args);
+          return { result };
+        } catch (e) {
+          return {
+            error: e && e.code ? e.code : 'Error',
+            message: e && e.message ? e.message : String(e)
+          };
+        }
+      }
       const response = await fetch('ipc://localhost/' + cmd, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

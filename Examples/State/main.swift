@@ -214,6 +214,10 @@ let htmlContent = """
 
     <script>
       async function invoke(command, args = {}) {
+        if (window.Velox && typeof window.Velox.invoke === 'function') {
+          const result = await window.Velox.invoke(command, args);
+          return { result };
+        }
         const response = await fetch(`ipc://localhost/${command}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

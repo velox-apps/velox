@@ -1,5 +1,8 @@
 // Velox IPC: invoke commands via custom protocol
 async function invoke(command, args = {}) {
+  if (window.Velox && typeof window.Velox.invoke === 'function') {
+    return window.Velox.invoke(command, args);
+  }
   const response = await fetch(`ipc://localhost/${command}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

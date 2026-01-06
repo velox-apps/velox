@@ -245,6 +245,17 @@ func htmlContent(videoExists: Bool) -> String {
     </div>
     <script>
       async function invoke(cmd, args = {}) {
+        if (window.Velox && typeof window.Velox.invoke === 'function') {
+          try {
+            const result = await window.Velox.invoke(cmd, args);
+            return { result };
+          } catch (e) {
+            return {
+              error: e && e.code ? e.code : 'Error',
+              message: e && e.message ? e.message : String(e)
+            };
+          }
+        }
         const body = JSON.stringify(args);
         const response = await fetch('ipc://localhost/' + cmd, {
           method: 'POST',

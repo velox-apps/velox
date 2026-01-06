@@ -1,6 +1,17 @@
 // Velox Commands - Frontend JavaScript
 
 async function invoke(command, args = {}) {
+  if (window.Velox && typeof window.Velox.invoke === 'function') {
+    try {
+      const result = await window.Velox.invoke(command, args);
+      return { result };
+    } catch (e) {
+      return {
+        error: e && e.code ? e.code : 'Error',
+        message: e && e.message ? e.message : String(e)
+      };
+    }
+  }
   const response = await fetch('ipc://localhost/' + command, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -61,6 +72,16 @@ async function getCounter() {
 async function ping() {
   const result = await invoke('ping');
   showResult('ping-result', result);
+}
+
+async function delayedEcho() {
+  const message = document.getElementById('deferred-message').value || 'Hello later';
+  const delayMs = parseInt(document.getElementById('deferred-delay').value, 10);
+  const result = await invoke('delayed_echo', {
+    message,
+    delayMs: Number.isFinite(delayMs) ? delayMs : 800
+  });
+  showResult('deferred-result', result);
 }
 
 // Binary response test - fetch image directly

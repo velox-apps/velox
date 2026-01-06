@@ -294,20 +294,28 @@ let html = """
 
   <script>
     // Velox global object for IPC communication
-    window.Velox = {
-      invoke: async function(command, args = {}) {
+    window.Velox = window.Velox || {};
+    if (typeof window.Velox.invoke !== 'function') {
+      window.Velox.invoke = async function(command, args = {}) {
         const response = await fetch(`ipc://localhost/${command}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(args)
         });
+        const text = await response.text();
         if (!response.ok) {
-          const error = await response.text();
-          throw new Error(error || `Command failed: ${command}`);
+          let message = `Command failed: ${command}`;
+          try {
+            const err = JSON.parse(text);
+            if (err && err.message) message = err.message;
+          } catch (_) {}
+          throw new Error(message);
         }
-        return response.json();
-      }
-    };
+        if (!text) return null;
+        const data = JSON.parse(text);
+        return data ? data.result : null;
+      };
+    }
   </script>
 
   <script>

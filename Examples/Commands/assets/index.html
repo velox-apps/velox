@@ -60,6 +60,15 @@
     </div>
 
     <div class="card">
+      <h2>Deferred Response</h2>
+      <p class="subtitle">Command resolves after a delay</p>
+      <input type="text" id="deferred-message" placeholder="Message" value="Hello later">
+      <input type="number" id="deferred-delay" placeholder="Delay (ms)" value="800">
+      <button onclick="delayedEcho()">Send Deferred Echo</button>
+      <div class="result" id="deferred-result">-</div>
+    </div>
+
+    <div class="card">
       <h2>Binary Response (Image)</h2>
       <p class="subtitle">Returns a 1x1 red PNG image</p>
       <button onclick="getImage()">Get Image</button>

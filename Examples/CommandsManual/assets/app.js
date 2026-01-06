@@ -1,6 +1,17 @@
 // Velox CommandsManual - Frontend JavaScript
 
 async function invoke(command, args = {}) {
+  if (window.Velox && typeof window.Velox.invoke === 'function') {
+    try {
+      const result = await window.Velox.invoke(command, args);
+      return { result };
+    } catch (e) {
+      return {
+        error: e && e.code ? e.code : 'Error',
+        message: e && e.message ? e.message : String(e)
+      };
+    }
+  }
   const response = await fetch(`ipc://localhost/${command}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
