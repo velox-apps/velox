@@ -1,0 +1,83 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "Permissions",
+  "version": "1.0.0",
+  "identifier": "com.velox.permissions",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Permissions Demo - Main Window (Full Access)",
+        "width": 650,
+        "height": 550,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      },
+      {
+        "label": "limited",
+        "title": "Permissions Demo - Limited Window (Restricted)",
+        "width": 650,
+        "height": 550,
+        "x": 700,
+        "y": 100,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": false,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    },
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "main-full-access",
+          "description": "Full access for main window",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "greet",
+            "get_secret",
+            "get_sensitive_data",
+            "read_file"
+          ]
+        },
+        {
+          "identifier": "limited-access",
+          "description": "Limited access for restricted window",
+          "windows": [
+            "limited"
+          ],
+          "permissions": [
+            "greet"
+          ]
+        }
+      ],
+      "permissions": {
+        "read_file": {
+          "identifier": "read_file",
+          "scopes": {
+            "path": {
+              "globs": [
+                "/tmp/*",
+                "/var/tmp/*"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

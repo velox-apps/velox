@@ -1,0 +1,27 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "DynamicHTML",
+  "version": "1.0.0",
+  "identifier": "com.velox.dynamichtml",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dynamic HTML - Swift Rendered",
+        "width": 700,
+        "height": 700,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

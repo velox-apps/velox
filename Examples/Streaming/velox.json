@@ -1,0 +1,28 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "Streaming",
+  "version": "1.0.0",
+  "identifier": "com.velox.streaming",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Velox Streaming Example",
+        "width": 854,
+        "height": 480,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app",
+          "ipc",
+          "stream"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "MultiWindow",
+  "version": "1.0.0",
+  "identifier": "com.velox.multiwindow",
+  "app": {
+    "windows": [
+      {
+        "label": "Main",
+        "title": "Velox - Main",
+        "width": 800,
+        "height": 600,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app"
+        ]
+      },
+      {
+        "label": "Secondary",
+        "title": "Velox - Secondary",
+        "width": 600,
+        "height": 400,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": false,
+        "customProtocols": [
+          "app"
+        ]
+      },
+      {
+        "label": "Third",
+        "title": "Velox - Third",
+        "width": 500,
+        "height": 350,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": false,
+        "customProtocols": [
+          "app"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

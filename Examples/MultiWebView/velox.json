@@ -1,0 +1,22 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "MultiWebView",
+  "version": "1.0.0",
+  "identifier": "com.velox.multiwebview",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "MultiWebView",
+        "width": 800,
+        "height": 600,
+        "create": true,
+        "visible": true,
+        "focus": true
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "WindowControls",
+  "version": "1.0.0",
+  "identifier": "com.velox.windowcontrols",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Velox Window Controls",
+        "width": 900,
+        "height": 750,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

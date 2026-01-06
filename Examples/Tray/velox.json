@@ -1,0 +1,26 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "Tray",
+  "version": "1.0.0",
+  "identifier": "com.velox.tray",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Velox Tray Demo",
+        "width": 500,
+        "height": 500,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

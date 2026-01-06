@@ -1,0 +1,40 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "Splashscreen",
+  "version": "1.0.0",
+  "identifier": "com.velox.splashscreen",
+  "app": {
+    "windows": [
+      {
+        "label": "splash",
+        "title": "Loading...",
+        "width": 400,
+        "height": 200,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app"
+        ]
+      },
+      {
+        "label": "main",
+        "title": "Velox",
+        "width": 800,
+        "height": 600,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": false,
+        "focus": false,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

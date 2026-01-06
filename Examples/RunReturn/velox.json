@@ -1,0 +1,26 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "RunReturn",
+  "version": "1.0.0",
+  "identifier": "com.velox.runreturn",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Run Return Example",
+        "width": 600,
+        "height": 400,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    }
+  }
+}

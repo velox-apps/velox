@@ -1,0 +1,47 @@
+{
+  "$schema": "https://velox.dev/schema/velox.schema.json",
+  "productName": "Built-in Plugins Demo",
+  "version": "1.0.0",
+  "identifier": "com.velox.builtin-plugins-demo",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Built-in Plugins Demo",
+        "width": 700,
+        "height": 900,
+        "url": "app://localhost/",
+        "create": true,
+        "visible": true,
+        "focus": true,
+        "customProtocols": [
+          "app",
+          "ipc"
+        ]
+      }
+    ],
+    "macOS": {
+      "activationPolicy": "regular"
+    },
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "builtin-plugins",
+          "description": "Allow all built-in plugin commands",
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "plugin:dialog:*",
+            "plugin:clipboard:*",
+            "plugin:notification:*",
+            "plugin:shell:*",
+            "plugin:os:*",
+            "plugin:process:*",
+            "plugin:opener:*"
+          ]
+        }
+      ]
+    }
+  }
+}
