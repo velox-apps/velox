@@ -5,61 +5,6 @@
 import Foundation
 import VeloxRuntimeWry
 
-// MARK: - Window Management
-
-/// Tracks all windows in the application
-final class WindowManager: @unchecked Sendable {
-  private var windows: [String: VeloxRuntimeWry.Window] = [:]
-  private var webviews: [String: VeloxRuntimeWry.Webview] = [:]
-  private let lock = NSLock()
-
-  func add(label: String, window: VeloxRuntimeWry.Window, webview: VeloxRuntimeWry.Webview) {
-    lock.lock()
-    windows[label] = window
-    webviews[label] = webview
-    lock.unlock()
-  }
-
-  func remove(label: String) {
-    lock.lock()
-    windows.removeValue(forKey: label)
-    webviews.removeValue(forKey: label)
-    lock.unlock()
-  }
-
-  func labels() -> [String] {
-    lock.lock()
-    defer { lock.unlock() }
-    return Array(windows.keys)
-  }
-
-  var count: Int {
-    lock.lock()
-    defer { lock.unlock() }
-    return windows.count
-  }
-
-  var isEmpty: Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    return windows.isEmpty
-  }
-
-  func showAll() {
-    lock.lock()
-    let allWindows = Array(windows.values)
-    let allWebviews = Array(webviews.values)
-    lock.unlock()
-
-    for window in allWindows {
-      _ = window.setVisible(true)
-    }
-    for webview in allWebviews {
-      _ = webview.show()
-    }
-  }
-}
-
 // MARK: - HTML Content Generator
 
 func htmlContent(for label: String, allLabels: [String]) -> String {
@@ -135,87 +80,42 @@ func main() {
     fatalError("MultiWindow example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("MultiWindow failed to start: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
+  let eventManager = appBuilder.eventManager
+  let allLabels = appBuilder.config.app.windows.map(\.label)
 
-  let windowManager = WindowManager()
-
-  // Window configurations matching tauri.conf.json
-  let windowConfigs: [(label: String, title: String, width: UInt32, height: UInt32)] = [
-    ("Main", "Velox - Main", 800, 600),
-    ("Secondary", "Velox - Secondary", 600, 400),
-    ("Third", "Velox - Third", 500, 350)
-  ]
-
-  let allLabels = windowConfigs.map { $0.label }
-
-  // Create ALL windows first (before any webviews)
-  var windows: [(label: String, window: VeloxRuntimeWry.Window)] = []
-  for config in windowConfigs {
-    let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-      width: config.width,
-      height: config.height,
-      title: config.title
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
+    let label = eventManager.resolveLabel(request.webviewIdentifier)
+    return VeloxRuntimeWry.CustomProtocol.Response(
+      status: 200,
+      headers: ["Content-Type": "text/html; charset=utf-8"],
+      mimeType: "text/html",
+      body: Data(htmlContent(for: label, allLabels: allLabels).utf8)
     )
-
-    guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-      print("Failed to create window: \(config.label)")
-      continue
-    }
-    windows.append((label: config.label, window: window))
   }
 
-  // Now create webviews for each window
-  for (label, window) in windows {
-    let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-      VeloxRuntimeWry.CustomProtocol.Response(
-        status: 200,
-        headers: ["Content-Type": "text/html; charset=utf-8"],
-        mimeType: "text/html",
-        body: Data(htmlContent(for: label, allLabels: allLabels).utf8)
-      )
-    }
+  print("Created \(allLabels.count) windows: \(allLabels.joined(separator: ", "))")
 
-    let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-      url: "app://localhost/",
-      customProtocols: [appProtocol]
-    )
-
-    guard let webview = window.makeWebview(configuration: webviewConfig) else {
-      print("Failed to create webview for window: \(label)")
-      continue
-    }
-
-    windowManager.add(label: label, window: window, webview: webview)
-  }
-
-  print("Created \(windowManager.count) windows: \(windowManager.labels().joined(separator: ", "))")
-
-  // Show all windows and activate app
-  windowManager.showAll()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  // Run event loop using run_return pattern
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested:
-      // For simplicity, exit when any window closes
-      // A more sophisticated version would track which window closed
-      return .exit
-
-    case .userExit:
-      return .exit
-
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("MultiWindow failed to start: \(error)")
   }
 }
 

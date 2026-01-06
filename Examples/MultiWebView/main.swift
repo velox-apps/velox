@@ -62,16 +62,10 @@ func main() {
     fatalError("MultiWebView must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
 
   // App protocol - serves local HTML content
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
@@ -80,86 +74,78 @@ func main() {
     )
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 800,
-    height: 600,
-    title: "MultiWebView"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
   // Create 4 child webviews in a 2x2 grid
   var webviews: [VeloxRuntimeWry.Webview] = []
+  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app", handler: appHandler)
   let panelWidth: Double = 400
   let panelHeight: Double = 300
 
-  for row in 0..<2 {
-    for col in 0..<2 {
-      let index = row * 2 + col
-      let x = Double(col) * panelWidth
-      let y = Double(row) * panelHeight
+  do {
+    let app = try VeloxAppBuilder(directory: exampleDir)
+      .registerProtocol("app", handler: appHandler)
+      .onWindowCreated("main") { window, _ in
+        webviews.removeAll(keepingCapacity: true)
 
-      // Only the first panel (local app) needs custom protocols
-      let protocols = index == 0 ? [appProtocol] : []
+        for row in 0..<2 {
+          for col in 0..<2 {
+            let index = row * 2 + col
+            let x = Double(col) * panelWidth
+            let y = Double(row) * panelHeight
 
-      let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-        url: panelURLs[index],
-        customProtocols: protocols,
-        isChild: true,
-        x: x,
-        y: y,
-        width: panelWidth,
-        height: panelHeight
-      )
+            // Only the first panel (local app) needs custom protocols
+            let protocols = index == 0 ? [appProtocol] : []
 
-      if let webview = window.makeWebview(configuration: webviewConfig) {
-        webviews.append(webview)
-        print("Created webview \(index + 1): \(panelURLs[index])")
-      } else {
-        print("Failed to create webview \(index + 1)")
+            let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
+              url: panelURLs[index],
+              customProtocols: protocols,
+              isChild: true,
+              x: x,
+              y: y,
+              width: panelWidth,
+              height: panelHeight
+            )
+
+            if let webview = window.makeWebview(configuration: webviewConfig) {
+              webviews.append(webview)
+              _ = webview.show()
+              print("Created webview \(index + 1): \(panelURLs[index])")
+            } else {
+              print("Failed to create webview \(index + 1)")
+            }
+          }
+        }
+
+        print("Created \(webviews.count) child webviews. Press Cmd+Q to exit.")
+      }
+
+    // Run event loop using run_return pattern
+    try app.run { event in
+      switch event {
+      case .windowCloseRequested, .userExit:
+        return .exit
+
+      case .windowResized(_, let size):
+        // Resize child webviews proportionally
+        let newPanelWidth = size.width / 2
+        let newPanelHeight = size.height / 2
+        for (index, webview) in webviews.enumerated() {
+          let row = index / 2
+          let col = index % 2
+          webview.setBounds(
+            x: Double(col) * newPanelWidth,
+            y: Double(row) * newPanelHeight,
+            width: newPanelWidth,
+            height: newPanelHeight
+          )
+        }
+        return .wait
+
+      default:
+        return .wait
       }
     }
-  }
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  for webview in webviews {
-    _ = webview.show()
-  }
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  print("Created \(webviews.count) child webviews. Press Cmd+Q to exit.")
-
-  // Run event loop using run_return pattern
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    case .windowResized(_, let size):
-      // Resize child webviews proportionally
-      let newPanelWidth = size.width / 2
-      let newPanelHeight = size.height / 2
-      for (index, webview) in webviews.enumerated() {
-        let row = index / 2
-        let col = index % 2
-        webview.setBounds(
-          x: Double(col) * newPanelWidth,
-          y: Double(row) * newPanelHeight,
-          width: newPanelWidth,
-          height: newPanelHeight
-        )
-      }
-      return .wait
-
-    default:
-      return .wait
-    }
+  } catch {
+    fatalError("MultiWebView failed to start: \(error)")
   }
 }
 

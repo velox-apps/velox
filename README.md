@@ -20,6 +20,10 @@ The plugin will invoke `cargo build` with the correct configuration (`debug` or 
 emit libraries into `runtime-wry-ffi/target`. If you prefer to build the Rust crate manually you
 can still run `cargo build` or `cargo build --release` inside `runtime-wry-ffi/`.
 
+By default the plugin runs Cargo in offline mode to avoid sandboxed network access and ensures
+`velox/.cargo/config.toml` patch overrides are picked up. If you need Cargo to fetch from the
+network, set `VELOX_CARGO_ONLINE=1` when building.
+
 ## Create New Projects
 
 Use the [create-velox-app](https://github.com/velox-apps/create-velox-app) command to create a new
@@ -716,4 +720,3 @@ wry = { path = "../wry" }
 - Local `tao` version must match crates.io (currently 0.34.5)
 - Local `tao` must have `velox-testing` in its default features in `Cargo.toml`
 - Local `wry` version must match crates.io (currently 0.53.5)
-

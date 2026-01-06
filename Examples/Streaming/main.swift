@@ -475,21 +475,17 @@ func main() {
     print("Showing instructions in the app...")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("Streaming failed to load velox.json: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Stream protocol for video
-  let streamProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "stream") { request in
+  let streamHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     handleStreamRequest(request, videoPath: videoPath)
   }
-
-  // Event manager for webview handles
-  let eventManager = VeloxEventManager()
 
   // Command registry with simulated download command
   let registry = CommandRegistry()
@@ -524,74 +520,35 @@ func main() {
 
     return .ok
   }
-
-  // IPC protocol for commands
-  let ipcHandler = createCommandHandler(
-    registry: registry,
-    eventManager: eventManager
-  )
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
-  // App protocol for HTML (with channel API injected)
-  let securityScript = SecurityScriptGenerator.generateInitScript(config: nil)
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     let html = htmlContent(videoExists: videoExists)
-    // Inject channel API script before closing </head>
-    let injectedHtml = html.replacingOccurrences(
-      of: "</head>",
-      with: "<script>\(securityScript)</script></head>"
-    )
     return VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
       mimeType: "text/html",
-      body: Data(injectedHtml.utf8)
+      body: Data(html.utf8)
     )
   }
-
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 854,
-    height: 480,
-    title: "Velox Streaming Example"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [appProtocol, streamProtocol, ipcProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Register webview with event manager for channel support
-  eventManager.register(webview: webview, label: "main")
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
 
   if videoExists {
     print("Streaming video: \(videoPath)")
   }
 
-  // Run event loop using run_return pattern
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("stream", handler: streamHandler)
+      .registerProtocol("app", handler: appHandler)
+      .registerCommands(registry)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Streaming failed to start: \(error)")
   }
 }
 

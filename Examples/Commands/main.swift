@@ -235,15 +235,18 @@ func main() {
     fatalError("Commands must run on the main thread")
   }
 
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+
   // Load assets from external files
   let assets = AssetBundle()
 
-  // Create state container with app state
-  let stateContainer = StateContainer()
-    .manage(AppState())
-
-  // Create event manager for webview injection
-  let eventManager = VeloxEventManager()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+    appBuilder.manage(AppState())
+  } catch {
+    fatalError("Commands failed to start: \(error)")
+  }
 
   // Create command registry using macro-generated command definitions
   // Notice how clean this is compared to Commands2!
@@ -299,24 +302,8 @@ func main() {
 
   print("[Commands] Registered commands: \(registry.commandNames.sorted().joined(separator: ", "))")
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create IPC handler from registry (with event manager for webview injection)
-  let ipcHandler = createCommandHandler(
-    registry: registry,
-    stateContainer: stateContainer,
-    eventManager: eventManager
-  )
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
   // Serve assets from external files
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     guard let url = URL(string: request.url) else {
       return notFoundResponse()
     }
@@ -340,46 +327,22 @@ func main() {
     )
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 700,
-    height: 700,
-    title: "Velox Commands Demo (@VeloxCommand)"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Register webview with event manager for webview injection
-  // Note: The label must match the webviewIdentifier from Wry (currently "1" for the first webview)
-  eventManager.register(webview: webview, label: "1")
-
-  webview.show()
-  window.setVisible(true)
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
   print("[Commands] Application started")
 
-  // Event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerCommands(registry)
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Commands failed to start: \(error)")
   }
 
   print("[Commands] Exiting")

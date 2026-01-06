@@ -449,38 +449,27 @@ func main() {
     fatalError("WindowControls example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 900,
-    height: 750,
-    title: "Velox Window Controls"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  // Wrapper for webview reference (needed for closure capture)
-  final class WebviewHolder: @unchecked Sendable {
+  // Wrapper for window/webview references (needed for closure capture)
+  final class WindowState: @unchecked Sendable {
+    var window: VeloxRuntimeWry.Window?
     var webview: VeloxRuntimeWry.Webview?
   }
-  let webviewHolder = WebviewHolder()
+  let windowState = WindowState()
 
   // IPC protocol for commands
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
-    guard let webview = webviewHolder.webview else { return nil }
+  let ipcHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
+    guard let window = windowState.window,
+          let webview = windowState.webview
+    else {
+      return nil
+    }
     return handleInvoke(request: request, window: window, webview: webview)
   }
 
   // App protocol serves HTML
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
@@ -489,33 +478,26 @@ func main() {
     )
   }
 
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
+  do {
+    let app = try VeloxAppBuilder(directory: exampleDir)
+      .registerProtocol("ipc", handler: ipcHandler)
+      .registerProtocol("app", handler: appHandler)
+      .onWindowCreated("main") { window, webview in
+        windowState.window = window
+        windowState.webview = webview
+      }
 
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-  webviewHolder.webview = webview
+    try app.run { event in
+      switch event {
+      case .windowCloseRequested, .userExit:
+        return .exit
 
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  // Run event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    default:
-      return .wait
+      default:
+        return .wait
+      }
     }
+  } catch {
+    fatalError("WindowControls failed to start: \(error)")
   }
 }
 

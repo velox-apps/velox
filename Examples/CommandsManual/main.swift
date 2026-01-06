@@ -249,27 +249,21 @@ func main() {
     fatalError("CommandsManual example must run on the main thread")
   }
 
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+
   // Load assets from external files
   let assets = AssetBundle()
 
   // Initialize shared state
   let state = AppState()
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
   // IPC protocol for commands
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
+  let ipcHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     handleInvoke(request: request, state: state)
   }
 
   // App protocol serves assets from external files
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     guard let url = URL(string: request.url),
           let asset = assets.loadAsset(path: url.path) else {
       return VeloxRuntimeWry.CustomProtocol.Response(
@@ -286,42 +280,22 @@ func main() {
     )
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 900,
-    height: 700,
-    title: "Velox Commands (Manual Routing)"
-  )
+  do {
+    let app = try VeloxAppBuilder(directory: exampleDir)
+      .registerProtocol("ipc", handler: ipcHandler)
+      .registerProtocol("app", handler: appHandler)
 
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
+    try app.run { event in
+      switch event {
+      case .windowCloseRequested, .userExit:
+        return .exit
 
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  // Run event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    default:
-      return .wait
+      default:
+        return .wait
+      }
     }
+  } catch {
+    fatalError("CommandsManual failed to start: \(error)")
   }
 }
 

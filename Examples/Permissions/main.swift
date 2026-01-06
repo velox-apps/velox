@@ -214,49 +214,19 @@ func main() {
     fatalError("Permissions example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("Permissions failed to load velox.json: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create permission manager with capabilities
-  let permissionManager = PermissionManager()
-
-  // Capability for main window - full access
-  // Note: Wry assigns webview identifiers as "1", "2", etc.
-  // The first webview created gets "1", the second gets "2"
-  permissionManager.registerCapability(
-    CapabilityConfig(
-      identifier: "main-full-access",
-      description: "Full access for main window",
-      windows: ["1"],  // First webview created
-      permissions: ["greet", "get_secret", "get_sensitive_data", "read_file"]
-    ))
-
-  // Capability for limited window - only greet
-  permissionManager.registerCapability(
-    CapabilityConfig(
-      identifier: "limited-access",
-      description: "Limited access for restricted window",
-      windows: ["2"],  // Second webview created
-      permissions: ["greet"]
-    ))
-
-  // Permission with scope for file reading (only /tmp allowed)
-  permissionManager.registerPermission(
-    PermissionConfig(
-      identifier: "read_file",
-      scopes: ["path": .globs(["/tmp/*", "/var/tmp/*"])]
-    ))
-
-  print("[Permissions] Registered capabilities: \(permissionManager.capabilityIdentifiers)")
-  print("[Permissions] Registered permissions: \(permissionManager.permissionIdentifiers)")
+  print("[Permissions] Registered capabilities: \(appBuilder.permissionManager.capabilityIdentifiers)")
+  print("[Permissions] Registered permissions: \(appBuilder.permissionManager.permissionIdentifiers)")
 
   // Create command registry
-  let registry = CommandRegistry()
+  let registry = appBuilder.commandRegistry
 
   registry.register("greet", returning: GreetResponse.self) { ctx in
     let args = ctx.decodeArgs()
@@ -292,107 +262,35 @@ func main() {
 
   print("[Permissions] Registered commands: \(registry.commandNames.sorted())")
 
-  // Create event manager
-  let eventManager = VeloxEventManager()
-
-  // Create IPC handler with permission checking
-  let ipcHandler = createCommandHandler(
-    registry: registry,
-    eventManager: eventManager,
-    permissionManager: permissionManager
-  )
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
-  // Create main window (full access)
-  let mainWindowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 650,
-    height: 550,
-    title: "Permissions Demo - Main Window (Full Access)"
-  )
-
-  guard let mainWindow = eventLoop.makeWindow(configuration: mainWindowConfig) else {
-    fatalError("Failed to create main window")
-  }
-
-  // App protocol for main window
-  let mainAppProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-    VeloxRuntimeWry.CustomProtocol.Response(
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
+    let label = appBuilder.eventManager.resolveLabel(request.webviewIdentifier)
+    let html = label == "limited" ? limitedWindowHTML() : mainWindowHTML()
+    return VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
       mimeType: "text/html",
-      body: Data(mainWindowHTML().utf8)
+      body: Data(html.utf8)
     )
   }
-
-  let mainWebviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, mainAppProtocol]
-  )
-
-  guard let mainWebview = mainWindow.makeWebview(configuration: mainWebviewConfig) else {
-    fatalError("Failed to create main webview")
-  }
-
-  eventManager.register(webview: mainWebview, label: "1")
-  mainWebview.show()
-  mainWindow.setVisible(true)
-
-  // Create limited window (restricted access)
-  let limitedWindowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 650,
-    height: 550,
-    title: "Permissions Demo - Limited Window (Restricted)"
-  )
-
-  guard let limitedWindow = eventLoop.makeWindow(configuration: limitedWindowConfig) else {
-    fatalError("Failed to create limited window")
-  }
-
-  // Position limited window to the right of main window
-  limitedWindow.setPosition(x: 700, y: 100)
-
-  // App protocol for limited window
-  let limitedAppProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-    VeloxRuntimeWry.CustomProtocol.Response(
-      status: 200,
-      headers: ["Content-Type": "text/html; charset=utf-8"],
-      mimeType: "text/html",
-      body: Data(limitedWindowHTML().utf8)
-    )
-  }
-
-  // Create new IPC protocol for limited window (same handler, different protocol instance)
-  let limitedIpcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
-  let limitedWebviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [limitedIpcProtocol, limitedAppProtocol]
-  )
-
-  guard let limitedWebview = limitedWindow.makeWebview(configuration: limitedWebviewConfig) else {
-    fatalError("Failed to create limited webview")
-  }
-
-  eventManager.register(webview: limitedWebview, label: "2")
-  limitedWebview.show()
-  limitedWindow.setVisible(true)
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
 
   print("[Permissions] Application started with two windows")
   print("[Permissions] - Main window: Full access to all commands")
   print("[Permissions] - Limited window: Access only to 'greet' command")
 
-  // Event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("app", handler: appHandler)
+      .registerCommands(registry)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Permissions failed to start: \(error)")
   }
 
   print("[Permissions] Exiting")

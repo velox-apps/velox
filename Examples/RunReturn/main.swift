@@ -71,41 +71,7 @@ func main() {
     fatalError("RunReturn example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-    VeloxRuntimeWry.CustomProtocol.Response(
-      status: 200,
-      headers: ["Content-Type": "text/html; charset=utf-8"],
-      mimeType: "text/html",
-      body: Data(htmlContent.utf8)
-    )
-  }
-
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 600,
-    height: 400,
-    title: "Run Return Example"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
 
   // Record start time
   let startTime = Date()
@@ -113,23 +79,29 @@ func main() {
   print("Event loop starting. Close the window to continue...")
   print("")
 
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
+  do {
+    let app = try VeloxAppBuilder(directory: exampleDir)
+      .registerProtocol("app") { _ in
+        VeloxRuntimeWry.CustomProtocol.Response(
+          status: 200,
+          headers: ["Content-Type": "text/html; charset=utf-8"],
+          mimeType: "text/html",
+          body: Data(htmlContent.utf8)
+        )
+      }
 
-  // Run the event loop using run_return pattern - will exit when window closes
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
+    // Run the event loop using run_return pattern - will exit when window closes
+    try app.run { event in
+      switch event {
+      case .windowCloseRequested, .userExit:
+        return .exit
 
-    default:
-      return .wait
+      default:
+        return .wait
+      }
     }
+  } catch {
+    fatalError("RunReturn failed to start: \(error)")
   }
 
   // This code runs AFTER the event loop exits!

@@ -281,14 +281,19 @@ func main() {
   }
 
   let state = AppState()
-  let eventManager = VeloxEventManager()
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let eventManager: VeloxEventManager
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+    eventManager = appBuilder.eventManager
+  } catch {
+    fatalError("Events failed to start: \(error)")
   }
 
   // Create app protocol for serving HTML
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html"],
@@ -298,9 +303,6 @@ func main() {
 
   // Create IPC protocol that includes event handling
   let ipcHandler = createEventIPCHandler(manager: eventManager)
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
-    ipcHandler(request)
-  }
 
   // Setup backend event listeners
   eventManager.listen("ping") { event in
@@ -338,37 +340,6 @@ func main() {
     }
   }
 
-  // Create window
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 800,
-    height: 700,
-    title: "Velox Events Demo"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [appProtocol, ipcProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Register webview with event manager
-  eventManager.register(webview: webview, label: "main")
-
-  webview.show()
-  window.setVisible(true)
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  eventLoop.showApplication()
-  #endif
-
   print("[App] Events demo started")
   print("[App] Backend will emit counter updates every second")
 
@@ -383,17 +354,24 @@ func main() {
   }
   RunLoop.main.add(counterTimer, forMode: .common)
 
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      counterTimer.invalidate()
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("app", handler: appHandler)
+      .registerProtocol("ipc") { request in
+        ipcHandler(request)
+      }
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          counterTimer.invalidate()
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Events failed to start: \(error)")
   }
-
-  print("[App] Events demo exiting")
 }
 
 main()

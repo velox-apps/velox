@@ -272,26 +272,22 @@ func main() {
     fatalError("State example must run on the main thread")
   }
 
-  // Create state container and register managed state
-  let stateContainer = StateContainer()
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("State failed to load velox.json: \(error)")
+  }
+
+  appBuilder
     .manage(Counter())
     .manage(AppInfo(name: "Velox State Demo", version: "1.0.0"))
 
   print("[State] Registered Counter and AppInfo in StateContainer")
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create IPC handler with access to state container
-  let ipcHandler = createIPCHandler(stateContainer: stateContainer)
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let ipcHandler = createIPCHandler(stateContainer: appBuilder.stateContainer)
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
@@ -300,44 +296,22 @@ func main() {
     )
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 400,
-    height: 400,
-    title: "Velox State Example"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
   print("[State] Application started")
 
-  // Run event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("ipc", handler: ipcHandler)
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("State failed to start: \(error)")
   }
 
   print("[State] Application exiting")

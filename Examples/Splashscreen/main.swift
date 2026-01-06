@@ -142,18 +142,17 @@ func main() {
     fatalError("Splashscreen example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("Splashscreen failed to load velox.json: \(error)")
   }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
 
   let windowManager = SplashWindowManager()
 
-  // IPC protocol for close_splashscreen command
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc") { request in
+  let ipcHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     guard let url = URL(string: request.url) else { return nil }
     let command = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
@@ -170,86 +169,43 @@ func main() {
     return nil
   }
 
-  // Window configurations
-  let windowConfigs: [(label: String, title: String, width: UInt32, height: UInt32, isSplash: Bool)] = [
-    ("Splash", "Loading...", 400, 200, true),
-    ("Main", "Velox", 800, 600, false)
-  ]
-
-  // Create ALL windows first (before any webviews)
-  var windows: [(label: String, window: VeloxRuntimeWry.Window, isSplash: Bool)] = []
-  for config in windowConfigs {
-    let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-      width: config.width,
-      height: config.height,
-      title: config.title
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
+    let label = appBuilder.eventManager.resolveLabel(request.webviewIdentifier)
+    let html = label == "splash" ? splashscreenHTML : mainWindowHTML(shouldCloseSplash: true)
+    return VeloxRuntimeWry.CustomProtocol.Response(
+      status: 200,
+      headers: ["Content-Type": "text/html; charset=utf-8"],
+      mimeType: "text/html",
+      body: Data(html.utf8)
     )
-
-    guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-      print("Failed to create window: \(config.label)")
-      continue
-    }
-    windows.append((label: config.label, window: window, isSplash: config.isSplash))
   }
 
-  // Now create webviews for each window
-  for (label, window, isSplash) in windows {
-    let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
-      let html = isSplash ? splashscreenHTML : mainWindowHTML(shouldCloseSplash: true)
-      return VeloxRuntimeWry.CustomProtocol.Response(
-        status: 200,
-        headers: ["Content-Type": "text/html; charset=utf-8"],
-        mimeType: "text/html",
-        body: Data(html.utf8)
-      )
-    }
+  appBuilder.onWindowCreated("splash") { window, webview in
+    windowManager.splashWindow = window
+    windowManager.splashWebview = webview
+  }
 
-    let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-      url: "app://localhost/",
-      customProtocols: isSplash ? [appProtocol] : [ipcProtocol, appProtocol]
-    )
-
-    guard let webview = window.makeWebview(configuration: webviewConfig) else {
-      print("Failed to create webview for window: \(label)")
-      continue
-    }
-
-    if isSplash {
-      windowManager.splashWindow = window
-      windowManager.splashWebview = webview
-    } else {
-      windowManager.mainWindow = window
-      windowManager.mainWebview = webview
-    }
+  appBuilder.onWindowCreated("main") { window, webview in
+    windowManager.mainWindow = window
+    windowManager.mainWebview = webview
   }
 
   print("Splashscreen example started - will transition to main window in 2 seconds")
 
-  // Show splashscreen, hide main window initially
-  if let splashWindow = windowManager.splashWindow,
-     let splashWebview = windowManager.splashWebview {
-    _ = splashWindow.setVisible(true)
-    _ = splashWebview.show()
-    _ = splashWindow.focus()
-  }
-
-  if let mainWindow = windowManager.mainWindow {
-    _ = mainWindow.setVisible(false)
-  }
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
-  // Run event loop using run_return pattern
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerProtocol("ipc", handler: ipcHandler)
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Splashscreen failed to start: \(error)")
   }
 }
 

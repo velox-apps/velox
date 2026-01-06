@@ -370,44 +370,21 @@ func main() {
     fatalError("Plugins example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let builder: VeloxAppBuilder
+  do {
+    builder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("Plugins failed to load velox.json: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create config for the app
-  let config = VeloxConfig(
-    productName: "Plugins Demo",
-    identifier: "com.velox.plugins-demo",
-    app: AppConfig(
-      windows: [
-        {
-          var config = WindowConfig(
-            label: "main",
-            url: "app://localhost/",
-            title: "Velox Plugins Demo",
-            width: 700,
-            height: 600
-          )
-          config.customProtocols = ["app", "ipc"]
-          return config
-        }()
-      ]
-    )
-  )
-
-  // Create app builder with plugins using the declarative API
-  let builder = VeloxAppBuilder(config: config)
-    .plugins {
-      AnalyticsPlugin()
-      LoggerPlugin()
-    }
+  builder.plugins {
+    AnalyticsPlugin()
+    LoggerPlugin()
+  }
 
   // Register app:// protocol to serve HTML
-  builder.registerProtocol("app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html"],
@@ -415,41 +392,25 @@ func main() {
     )
   }
 
-  // Register ipc:// protocol for command handling
-  builder.registerProtocol("ipc") { request in
-    createCommandHandler(
-      registry: builder.commandRegistry,
-      stateContainer: builder.stateContainer,
-      eventManager: builder.eventManager
-    )(request)
-  }
-
   print("[Plugins] Building app...")
-
-  // Build the app (creates windows, webviews, and initializes plugins)
-  let windows = builder.build(eventLoop: eventLoop)
-
-  guard let mainWindow = windows["main"]?.window else {
-    fatalError("Failed to create main window")
-  }
-
-  mainWindow.setVisible(true)
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
 
   print("[Plugins] Application started")
   print("[Plugins] Registered commands: \(builder.commandRegistry.commandNames.sorted().joined(separator: ", "))")
 
-  // Event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try builder
+      .registerProtocol("app", handler: appHandler)
+      .registerCommands(builder.commandRegistry)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("Plugins failed to start: \(error)")
   }
 
   print("[Plugins] Exiting")

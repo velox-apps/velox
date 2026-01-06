@@ -409,68 +409,26 @@ func main() {
     fatalError("BuiltinPlugins example must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let builder: VeloxAppBuilder
+  do {
+    builder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("BuiltinPlugins failed to load velox.json: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create config for the app with capabilities to allow plugin commands
-  let config = VeloxConfig(
-    productName: "Built-in Plugins Demo",
-    identifier: "com.velox.builtin-plugins-demo",
-    app: AppConfig(
-      windows: [
-        {
-          var windowConfig = WindowConfig(
-            label: "main",
-            url: "app://localhost/",
-            title: "Built-in Plugins Demo",
-            width: 700,
-            height: 900
-          )
-          windowConfig.customProtocols = ["app", "ipc"]
-          return windowConfig
-        }()
-      ],
-      security: SecurityConfig(
-        capabilities: [
-          // Grant all built-in plugin permissions to the main window
-          CapabilityConfig(
-            identifier: "builtin-plugins",
-            description: "Allow all built-in plugin commands",
-            windows: ["main"],
-            permissions: [
-              "plugin:dialog:*",
-              "plugin:clipboard:*",
-              "plugin:notification:*",
-              "plugin:shell:*",
-              "plugin:os:*",
-              "plugin:process:*",
-              "plugin:opener:*"
-            ]
-          )
-        ]
-      )
-    )
-  )
-
-  // Create app builder with all built-in plugins
-  let builder = VeloxAppBuilder(config: config)
-    .plugins {
-      DialogPlugin()
-      ClipboardPlugin()
-      NotificationPlugin()
-      ShellPlugin()
-      OSInfoPlugin()
-      ProcessPlugin()
-      OpenerPlugin()
-    }
+  builder.plugins {
+    DialogPlugin()
+    ClipboardPlugin()
+    NotificationPlugin()
+    ShellPlugin()
+    OSInfoPlugin()
+    ProcessPlugin()
+    OpenerPlugin()
+  }
 
   // Register app:// protocol to serve HTML
-  builder.registerProtocol("app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html; charset=utf-8"],
@@ -479,42 +437,25 @@ func main() {
     )
   }
 
-  // Register ipc:// protocol for command handling
-  builder.registerProtocol("ipc") { request in
-    createCommandHandler(
-      registry: builder.commandRegistry,
-      stateContainer: builder.stateContainer,
-      eventManager: builder.eventManager,
-      permissionManager: builder.permissionManager
-    )(request)
-  }
-
   print("[BuiltinPlugins] Building app...")
-
-  // Build the app (creates windows, webviews, and initializes plugins)
-  let windows = builder.build(eventLoop: eventLoop)
-
-  guard let mainWindow = windows["main"]?.window else {
-    fatalError("Failed to create main window")
-  }
-
-  mainWindow.setVisible(true)
-
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
 
   print("[BuiltinPlugins] Application started")
   print("[BuiltinPlugins] Registered commands: \(builder.commandRegistry.commandNames.sorted().joined(separator: ", "))")
 
-  // Event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try builder
+      .registerProtocol("app", handler: appHandler)
+      .registerCommands(builder.commandRegistry)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("BuiltinPlugins failed to start: \(error)")
   }
 
   print("[BuiltinPlugins] Exiting")

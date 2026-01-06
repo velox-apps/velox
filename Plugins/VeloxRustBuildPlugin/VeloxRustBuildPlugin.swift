@@ -12,6 +12,21 @@ private func isReleaseConfiguration() -> Bool {
   return false
 }
 
+private func shouldUseOfflineCargo() -> Bool {
+  let environment = ProcessInfo.processInfo.environment
+  if environment["VELOX_CARGO_ONLINE"] == "1" {
+    return false
+  }
+  if environment["VELOX_CARGO_OFFLINE"] == "1" {
+    return true
+  }
+  let cargoOffline = environment["CARGO_NET_OFFLINE"]?.lowercased()
+  if cargoOffline == "1" || cargoOffline == "true" {
+    return true
+  }
+  return true
+}
+
 @main
 struct VeloxRustBuildPlugin: BuildToolPlugin {
   func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
@@ -33,13 +48,21 @@ struct VeloxRustBuildPlugin: BuildToolPlugin {
     if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
       scriptLines.append("export PATH=\"$PATH:\(home)/.cargo/bin\"")
     }
+    if shouldUseOfflineCargo() {
+      scriptLines.append("export CARGO_NET_OFFLINE=true")
+      scriptLines.append("echo '[VeloxRustBuildPlugin] cargo offline mode enabled'")
+    }
     scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
+    scriptLines.append("cd \"\(context.package.directory.string)\"")
     scriptLines.append("if ! command -v cargo >/dev/null; then")
     scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
     scriptLines.append("  exit 1")
     scriptLines.append("fi")
 
-    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\""
+    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\" --locked"
+    if shouldUseOfflineCargo() {
+      buildCommand += " --offline"
+    }
     if isReleaseConfiguration() {
       buildCommand += " --release"
     }
@@ -91,13 +114,21 @@ extension VeloxRustBuildPlugin: XcodeBuildToolPlugin {
     if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
       scriptLines.append("export PATH=\"$PATH:\(home)/.cargo/bin\"")
     }
+    if shouldUseOfflineCargo() {
+      scriptLines.append("export CARGO_NET_OFFLINE=true")
+      scriptLines.append("echo '[VeloxRustBuildPlugin] cargo offline mode enabled'")
+    }
     scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
+    scriptLines.append("cd \"\(context.xcodeProject.directory.string)\"")
     scriptLines.append("if ! command -v cargo >/dev/null; then")
     scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
     scriptLines.append("  exit 1")
     scriptLines.append("fi")
 
-    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\""
+    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\" --locked"
+    if shouldUseOfflineCargo() {
+      buildCommand += " --offline"
+    }
     if isReleaseConfiguration() {
       buildCommand += " --release"
     }

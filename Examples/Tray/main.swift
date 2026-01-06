@@ -126,13 +126,18 @@ func main() {
     fatalError("Tray must run on the main thread")
   }
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+  } catch {
+    fatalError("Tray failed to load velox.json: \(error)")
   }
 
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
+  var mainWindow: VeloxRuntimeWry.Window?
+  appBuilder.onWindowCreated("main") { window, _ in
+    mainWindow = window
+  }
 
   // Create the tray icon
   guard let tray = VeloxRuntimeWry.TrayIcon(
@@ -223,8 +228,7 @@ func main() {
 
   print("[Tray] Menu configured")
 
-  // Create app protocol
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { _ in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { _ in
     VeloxRuntimeWry.CustomProtocol.Response(
       status: 200,
       headers: ["Content-Type": "text/html"],
@@ -232,58 +236,39 @@ func main() {
     )
   }
 
-  // Create window
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 500,
-    height: 500,
-    title: "Velox Tray Demo"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  webview.show()
-  window.setVisible(true)
-  eventLoop.showApplication()
-
   print("[Tray] Application started")
   print("[Tray] Look for 'Velox' in your menu bar")
 
-  // Run event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
+  do {
+    try appBuilder
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
 
-    case .menuEvent(let menuId):
-      print("[Tray] Menu event: \(menuId)")
-      if menuId == "quit" {
-        return .exit
-      } else if menuId == "show-window" {
-        window.setVisible(true)
-        window.focus()
-      } else if menuId == "hide-window" {
-        window.setVisible(false)
+        case .menuEvent(let menuId):
+          print("[Tray] Menu event: \(menuId)")
+          if menuId == "quit" {
+            return .exit
+          } else if menuId == "show-window" {
+            mainWindow?.setVisible(true)
+            mainWindow?.focus()
+          } else if menuId == "hide-window" {
+            mainWindow?.setVisible(false)
+          }
+          return .wait
+
+        case .trayEvent(let event):
+          print("[Tray] Tray event: \(event.type) at \(event.position?.x ?? 0), \(event.position?.y ?? 0)")
+          return .wait
+
+        default:
+          return .wait
+        }
       }
-      return .wait
-
-    case .trayEvent(let event):
-      print("[Tray] Tray event: \(event.type) at \(event.position?.x ?? 0), \(event.position?.y ?? 0)")
-      return .wait
-
-    default:
-      return .wait
-    }
+  } catch {
+    fatalError("Tray failed to start: \(error)")
   }
 
   print("[Tray] Application exiting")

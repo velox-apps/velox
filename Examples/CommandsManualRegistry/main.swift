@@ -163,12 +163,18 @@ func main() {
     fatalError("CommandsManualRegistry example must run on the main thread")
   }
 
+  let exampleDir = URL(fileURLWithPath: #file).deletingLastPathComponent()
+
   // Load assets from external files
   let assets = AssetBundle()
 
-  // Create state container with app state
-  let stateContainer = StateContainer()
-    .manage(AppState())
+  let appBuilder: VeloxAppBuilder
+  do {
+    appBuilder = try VeloxAppBuilder(directory: exampleDir)
+    appBuilder.manage(AppState())
+  } catch {
+    fatalError("CommandsManualRegistry failed to start: \(error)")
+  }
 
   // Create command registry using the DSL
   let registry = commands {
@@ -217,20 +223,8 @@ func main() {
 
   print("[CommandsManualRegistry] Registered commands: \(registry.commandNames.sorted().joined(separator: ", "))")
 
-  guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-    fatalError("Failed to create event loop")
-  }
-
-  #if os(macOS)
-  eventLoop.setActivationPolicy(.regular)
-  #endif
-
-  // Create IPC handler from registry
-  let ipcHandler = createCommandHandler(registry: registry, stateContainer: stateContainer)
-  let ipcProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "ipc", handler: ipcHandler)
-
   // App protocol serves assets from external files
-  let appProtocol = VeloxRuntimeWry.CustomProtocol(scheme: "app") { request in
+  let appHandler: VeloxRuntimeWry.CustomProtocol.Handler = { request in
     guard let url = URL(string: request.url),
           let asset = assets.loadAsset(path: url.path) else {
       return VeloxRuntimeWry.CustomProtocol.Response(
@@ -247,43 +241,22 @@ func main() {
     )
   }
 
-  let windowConfig = VeloxRuntimeWry.WindowConfiguration(
-    width: 900,
-    height: 700,
-    title: "Velox Commands (Registry DSL)"
-  )
-
-  guard let window = eventLoop.makeWindow(configuration: windowConfig) else {
-    fatalError("Failed to create window")
-  }
-
-  let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
-    url: "app://localhost/",
-    customProtocols: [ipcProtocol, appProtocol]
-  )
-
-  guard let webview = window.makeWebview(configuration: webviewConfig) else {
-    fatalError("Failed to create webview")
-  }
-
-  // Show window and activate app
-  _ = window.setVisible(true)
-  _ = window.focus()
-  _ = webview.show()
-  #if os(macOS)
-  eventLoop.showApplication()
-  #endif
-
   print("[CommandsManualRegistry] Application started")
 
-  // Event loop
-  eventLoop.run { event in
-    switch event {
-    case .windowCloseRequested, .userExit:
-      return .exit
-    default:
-      return .wait
-    }
+  do {
+    try appBuilder
+      .registerCommands(registry)
+      .registerProtocol("app", handler: appHandler)
+      .run { event in
+        switch event {
+        case .windowCloseRequested, .userExit:
+          return .exit
+        default:
+          return .wait
+        }
+      }
+  } catch {
+    fatalError("CommandsManualRegistry failed to start: \(error)")
   }
 
   print("[CommandsManualRegistry] Exiting")

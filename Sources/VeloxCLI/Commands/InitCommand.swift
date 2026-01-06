@@ -177,6 +177,7 @@ struct InitCommand: AsyncParsableCommand {
           .executableTarget(
             name: "\(moduleName)",
             dependencies: [
+              .product(name: "VeloxRuntime", package: "aspect-cli"),
               .product(name: "VeloxRuntimeWry", package: "aspect-cli")
             ]
           )
@@ -368,10 +369,6 @@ struct InitCommand: AsyncParsableCommand {
         // Initialize assets for production mode
         let assets = AssetBundle()
 
-        guard let eventLoop = VeloxRuntimeWry.EventLoop() else {
-          fatalError("Failed to create event loop")
-        }
-
         // Build app
         let appBuilder = VeloxAppBuilder(config: config)
           .registerProtocol("ipc") { request in
@@ -417,28 +414,21 @@ struct InitCommand: AsyncParsableCommand {
             return VeloxRuntimeWry.CustomProtocol.Response(
               status: 404,
               headers: ["Content-Type": "text/plain"],
-              body: Data("Not found: \\(url.path)".utf8)
+                body: Data("Not found: \\(url.path)".utf8)
             )
           }
 
-        let windows = appBuilder.build(eventLoop: eventLoop)
-
-        guard !windows.isEmpty else {
-          fatalError("No windows created")
-        }
-
-        #if os(macOS)
-        eventLoop.showApplication()
-        #endif
-
-        // Event loop
-        eventLoop.run { event in
-          switch event {
-          case .windowCloseRequested, .userExit:
-            return .exit
-          default:
-            return .wait
+        do {
+          try appBuilder.run { event in
+            switch event {
+            case .windowCloseRequested, .userExit:
+              return .exit
+            default:
+              return .wait
+            }
           }
+        } catch {
+          fatalError("Failed to start app: \\(error)")
         }
       }
 
