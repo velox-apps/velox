@@ -33,7 +33,7 @@ jobs:
           swift-version: "5.10"
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build Rust FFI
         run: |
