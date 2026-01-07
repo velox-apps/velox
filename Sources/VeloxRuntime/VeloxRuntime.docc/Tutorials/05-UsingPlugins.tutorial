@@ -1,0 +1,98 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Using Plugins") {
+        Extend your app with Velox's built-in plugins. You'll add
+        file dialogs, clipboard access, and system notifications.
+
+        @Image(source: "tutorial-plugins.png", alt: "Plugin features")
+    }
+
+    @Section(title: "Adding Built-in Plugins") {
+        @ContentAndMedia {
+            Velox includes plugins for common system features.
+            Register them with your app builder.
+        }
+
+        @Steps {
+            @Step {
+                Import the plugins module and register the plugins
+                you need.
+
+                @Code(name: "main.swift", file: "05-01-import-plugins.swift")
+            }
+
+            @Step {
+                Alternatively, register all built-in plugins at once.
+
+                @Code(name: "main.swift", file: "05-02-all-plugins.swift")
+            }
+        }
+    }
+
+    @Section(title: "File Dialogs") {
+        @ContentAndMedia {
+            Use the Dialog plugin to show native file open and save
+            dialogs.
+        }
+
+        @Steps {
+            @Step {
+                Call the open dialog from JavaScript to let users
+                select files.
+
+                @Code(name: "app.js", file: "05-03-open-dialog.js")
+            }
+
+            @Step {
+                Use the save dialog for choosing where to save files.
+
+                @Code(name: "app.js", file: "05-04-save-dialog.js")
+            }
+        }
+    }
+
+    @Section(title: "Clipboard and Notifications") {
+        @ContentAndMedia {
+            Access the system clipboard and send notifications.
+        }
+
+        @Steps {
+            @Step {
+                Read and write clipboard content.
+
+                @Code(name: "app.js", file: "05-05-clipboard.js")
+            }
+
+            @Step {
+                Send system notifications to the user.
+
+                @Code(name: "app.js", file: "05-06-notifications.js")
+            }
+        }
+    }
+
+    @Section(title: "Creating Custom Plugins") {
+        @ContentAndMedia {
+            Build your own plugins for reusable functionality.
+        }
+
+        @Steps {
+            @Step {
+                Define a plugin struct that implements VeloxPlugin.
+
+                @Code(name: "LoggingPlugin.swift", file: "05-07-custom-plugin.swift")
+            }
+
+            @Step {
+                Register commands and state in the initialize method.
+
+                @Code(name: "LoggingPlugin.swift", file: "05-08-plugin-commands.swift")
+            }
+
+            @Step {
+                Use your custom plugin in your app.
+
+                @Code(name: "main.swift", file: "05-09-use-custom-plugin.swift")
+            }
+        }
+    }
+}

@@ -4,6 +4,28 @@ import Foundation
 import Logging
 import VeloxRuntime
 
+/// Builds the Velox app for production distribution.
+///
+/// The build command:
+/// 1. Loads `velox.json` configuration
+/// 2. Runs `beforeBuildCommand` if configured
+/// 3. Builds the Swift app with `swift build`
+/// 4. Optionally creates a macOS `.app` bundle
+///
+/// Usage:
+/// ```bash
+/// # Build release
+/// velox build
+///
+/// # Build debug
+/// velox build --debug
+///
+/// # Build and create .app bundle (macOS)
+/// velox build --bundle
+///
+/// # Specify target
+/// velox build MyAppTarget --bundle
+/// ```
 struct BuildCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "build",

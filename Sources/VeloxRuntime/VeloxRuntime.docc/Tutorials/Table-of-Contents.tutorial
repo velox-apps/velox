@@ -1,0 +1,40 @@
+@Tutorials(name: "Meet Velox") {
+    @Intro(title: "Build Desktop Apps with Swift and HTML") {
+        Learn how to create beautiful, native desktop applications
+        using Swift for your backend logic and HTML/CSS/JavaScript
+        for your user interface.
+
+        Velox brings the power of Tauri to Swift developers—build
+        lightweight, secure desktop apps without learning Rust.
+    }
+
+    @Chapter(name: "Getting Started") {
+        Set up your development environment and build your first
+        Velox application from scratch.
+
+        @Image(source: "chapter-getting-started.png", alt: "Getting started with Velox")
+
+        @TutorialReference(tutorial: "doc:01-YourFirstApp")
+        @TutorialReference(tutorial: "doc:02-AddingCommands")
+    }
+
+    @Chapter(name: "Commands and State") {
+        Master communication between Swift and JavaScript with
+        type-safe commands and shared state.
+
+        @Image(source: "chapter-commands.png", alt: "Commands and state management")
+
+        @TutorialReference(tutorial: "doc:03-TypeSafeCommands")
+        @TutorialReference(tutorial: "doc:04-ManagingState")
+    }
+
+    @Chapter(name: "Plugins and Events") {
+        Extend your app with plugins and push real-time updates
+        to your frontend.
+
+        @Image(source: "chapter-plugins.png", alt: "Plugins and events")
+
+        @TutorialReference(tutorial: "doc:05-UsingPlugins")
+        @TutorialReference(tutorial: "doc:06-EventStreaming")
+    }
+}

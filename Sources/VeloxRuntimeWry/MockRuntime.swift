@@ -2,9 +2,27 @@ import Foundation
 import VeloxRuntime
 
 extension VeloxRuntimeWry {
-  /// Lightweight Swift-only runtime used by unit tests. It mirrors the public
-  /// API of the Wry-backed runtime but keeps all state in memory so tests never
-  /// have to touch Tao/AppKit.
+  /// A mock implementation of ``VeloxRuntime`` for unit testing.
+  ///
+  /// This runtime keeps all state in memory without requiring native window
+  /// system access. Use it in tests to verify application logic without
+  /// spinning up actual windows or webviews.
+  ///
+  /// Example:
+  /// ```swift
+  /// let runtime = VeloxRuntimeWry.MockRuntime()
+  /// let window = try runtime.createWindow(pending: VeloxPendingWindow(label: "test"))
+  ///
+  /// // Simulate events
+  /// let proxy = try runtime.createProxy()
+  /// try proxy.send(event: .custom("test-event"))
+  ///
+  /// // Process events
+  /// runtime.runIteration { event in
+  ///   // Verify event handling
+  ///   return .wait
+  /// }
+  /// ```
   public final class MockRuntime: VeloxRuntime {
     public typealias Event = VeloxRuntimeWry.Event
     public typealias Handle = MockRuntime

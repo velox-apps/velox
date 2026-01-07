@@ -1,0 +1,104 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Events and Streaming") {
+        Push real-time updates from Swift to your frontend. You'll
+        learn about events, channels, and building reactive UIs.
+
+        @Image(source: "tutorial-events.png", alt: "Event streaming")
+    }
+
+    @Section(title: "Emitting Events") {
+        @ContentAndMedia {
+            Events let Swift push data to JavaScript without the
+            frontend requesting it.
+        }
+
+        @Steps {
+            @Step {
+                Emit an event from a command handler using the context.
+
+                @Code(name: "Commands.swift", file: "06-01-emit-event.swift")
+            }
+
+            @Step {
+                Listen for events in JavaScript using the Velox API.
+
+                @Code(name: "app.js", file: "06-02-listen-events.js")
+            }
+        }
+    }
+
+    @Section(title: "Progress Updates") {
+        @ContentAndMedia {
+            Use events to report progress on long-running operations.
+        }
+
+        @Steps {
+            @Step {
+                Start a background task and emit progress events.
+
+                @Code(name: "Commands.swift", file: "06-03-progress-command.swift")
+            }
+
+            @Step {
+                Display a progress bar that updates in real-time.
+
+                @Code(name: "app.js", file: "06-04-progress-ui.js")
+            }
+        }
+    }
+
+    @Section(title: "Channels for Streaming") {
+        @ContentAndMedia {
+            For large data streams, channels provide better performance
+            than individual events.
+        }
+
+        @Steps {
+            @Step {
+                Create a channel that streams data to the frontend.
+
+                @Code(name: "Commands.swift", file: "06-05-channel-create.swift")
+            }
+
+            @Step {
+                Send messages through the channel and close it when done.
+
+                @Code(name: "Commands.swift", file: "06-06-channel-send.swift")
+            }
+
+            @Step {
+                Receive channel messages in JavaScript.
+
+                @Code(name: "app.js", file: "06-07-channel-receive.js")
+            }
+        }
+    }
+
+    @Section(title: "Building a Real-time Dashboard") {
+        @ContentAndMedia {
+            Combine everything to build a dashboard that shows
+            live system metrics.
+        }
+
+        @Steps {
+            @Step {
+                Create a metrics collector that emits periodic updates.
+
+                @Code(name: "Metrics.swift", file: "06-08-metrics-collector.swift")
+            }
+
+            @Step {
+                Build the dashboard UI with charts that update live.
+
+                @Code(name: "dashboard.html", file: "06-09-dashboard-ui.html")
+            }
+
+            @Step {
+                Connect the frontend to the event stream and update
+                the charts.
+
+                @Code(name: "dashboard.js", file: "06-10-dashboard-js.js")
+            }
+        }
+    }
+}

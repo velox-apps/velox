@@ -1,0 +1,92 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Adding Commands") {
+        Expand your app with multiple commands that handle different
+        types of data. You'll learn about typed arguments, error handling,
+        and the @VeloxCommand macro.
+
+        @Image(source: "tutorial-commands.png", alt: "Command examples")
+    }
+
+    @Section(title: "Multiple Commands") {
+        @ContentAndMedia {
+            Real applications need many commands. Let's add several
+            that demonstrate different patterns for handling data.
+        }
+
+        @Steps {
+            @Step {
+                Start with the app from the previous tutorial.
+                We'll expand the command registry with more handlers.
+
+                @Code(name: "main.swift", file: "02-01-starting-point.swift")
+            }
+
+            @Step {
+                Add a math command that takes multiple arguments.
+                Notice how we define a struct for typed arguments.
+
+                @Code(name: "main.swift", file: "02-02-math-command.swift")
+            }
+
+            @Step {
+                Add error handling with a division command that can
+                throw errors back to JavaScript.
+
+                @Code(name: "main.swift", file: "02-03-error-handling.swift")
+            }
+        }
+    }
+
+    @Section(title: "The @VeloxCommand Macro") {
+        @ContentAndMedia {
+            The `@VeloxCommand` macro eliminates boilerplate by
+            generating command registration code automatically.
+        }
+
+        @Steps {
+            @Step {
+                Import `VeloxMacros` and create a Commands container.
+                The macro generates registration code for each function.
+
+                @Code(name: "main.swift", file: "02-04-macro-setup.swift")
+            }
+
+            @Step {
+                Define commands as simple static functions with the
+                `@VeloxCommand` attribute.
+
+                @Code(name: "main.swift", file: "02-05-macro-commands.swift")
+            }
+
+            @Step {
+                Register the macro-generated commands in your registry.
+                Each function gets a corresponding `Command` property.
+
+                @Code(name: "main.swift", file: "02-06-macro-registry.swift")
+            }
+        }
+    }
+
+    @Section(title: "Update the Frontend") {
+        @ContentAndMedia {
+            Add UI elements to test all your new commands from
+            the frontend.
+        }
+
+        @Steps {
+            @Step {
+                Update the HTML with forms for each command. Include
+                inputs for the math operations.
+
+                @Code(name: "index.html", file: "02-07-frontend-html.html")
+            }
+
+            @Step {
+                Add JavaScript handlers that call each command and
+                display results, including error handling.
+
+                @Code(name: "app.js", file: "02-08-frontend-js.js")
+            }
+        }
+    }
+}

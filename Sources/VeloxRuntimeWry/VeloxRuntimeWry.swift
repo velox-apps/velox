@@ -63,20 +63,42 @@ final class VeloxEventStreamMultiplexer<Value> {
   }
 }
 
-/// Convenience wrapper around the Rust FFI exported by `velox-runtime-wry-ffi`.
-/// This provides a Swift-first surface that mirrors the original Tauri `wry`
-/// runtime API naming while renaming public symbols to the Velox domain.
+/// The Velox runtime implementation backed by Tao (windowing) and Wry (webview).
+///
+/// This namespace provides Swift wrappers around the Rust FFI for creating
+/// desktop applications with native windows and webviews.
+///
+/// The main types are:
+/// - ``EventLoop``: The main event loop for processing window events
+/// - ``Window``: A native window that can host webviews
+/// - ``Webview``: A web content view for rendering HTML/CSS/JavaScript
+/// - ``Runtime``: A higher-level wrapper implementing ``VeloxRuntime``
+///
+/// Example usage:
+/// ```swift
+/// let eventLoop = VeloxRuntimeWry.EventLoop()!
+/// let window = eventLoop.makeWindow(
+///   configuration: .init(width: 800, height: 600, title: "My App")
+/// )!
+/// let webview = window.makeWebview(url: "https://example.com")
+/// eventLoop.run()
+/// ```
 public enum VeloxRuntimeWry {
+  /// Errors that can occur during runtime operations.
   public enum RuntimeError: Swift.Error {
+    /// The requested operation is not supported on this platform.
     case unsupported
   }
 
-  /// Describes the versions of the Velox runtime and the underlying WebView
-  /// implementation.
+  /// Version information for the Velox runtime components.
   public struct Version: Sendable, Hashable {
+    /// The version of the Velox runtime library.
     public let runtime: String
+
+    /// The version of the underlying webview implementation.
     public let webview: String
 
+    /// Creates a version info instance.
     public init(runtime: String, webview: String) {
       self.runtime = runtime
       self.webview = webview
@@ -97,18 +119,32 @@ public enum VeloxRuntimeWry {
   }
 
   /// Control flow hints returned by event loop callbacks.
+  ///
+  /// These values control the behavior of the event loop after handling an event.
   public enum ControlFlow: Int32, Sendable {
+    /// Continue immediately without waiting for new events.
     case poll = 0
+    /// Wait for the next event before continuing.
     case wait = 1
+    /// Exit the event loop.
     case exit = 2
   }
 
-  /// Window configuration subset mirrored from `tao::window::WindowBuilder`.
+  /// Configuration for creating a new window.
   public struct WindowConfiguration: Sendable {
+    /// Initial width of the window in logical pixels.
     public var width: UInt32
+    /// Initial height of the window in logical pixels.
     public var height: UInt32
+    /// The window title displayed in the title bar.
     public var title: String
 
+    /// Creates a window configuration.
+    ///
+    /// - Parameters:
+    ///   - width: Initial width in logical pixels (default: 0 for system default).
+    ///   - height: Initial height in logical pixels (default: 0 for system default).
+    ///   - title: The window title (default: empty string).
     public init(width: UInt32 = 0, height: UInt32 = 0, title: String = "") {
       self.width = width
       self.height = height
@@ -116,14 +152,37 @@ public enum VeloxRuntimeWry {
     }
   }
 
+  /// A custom URL protocol handler for intercepting webview requests.
+  ///
+  /// Custom protocols allow you to serve content from Swift code when the webview
+  /// navigates to URLs with your custom scheme.
+  ///
+  /// Example:
+  /// ```swift
+  /// let protocol = CustomProtocol(scheme: "app") { request in
+  ///   let html = "<html><body>Hello from Swift!</body></html>"
+  ///   return CustomProtocol.Response(
+  ///     status: 200,
+  ///     headers: ["Content-Type": "text/html"],
+  ///     body: Data(html.utf8)
+  ///   )
+  /// }
+  /// ```
   public struct CustomProtocol: Sendable {
+    /// An incoming request to the custom protocol handler.
     public struct Request: Sendable {
+      /// The full URL being requested (e.g., "app://localhost/page.html").
       public let url: String
+      /// The HTTP method (GET, POST, etc.).
       public let method: String
+      /// Request headers.
       public let headers: [String: String]
+      /// The request body data.
       public let body: Data
+      /// The identifier of the webview making the request.
       public let webviewIdentifier: String
 
+      /// Creates a request.
       public init(
         url: String,
         method: String,
@@ -139,12 +198,24 @@ public enum VeloxRuntimeWry {
       }
     }
 
+    /// A response from the custom protocol handler.
     public struct Response: Sendable {
+      /// HTTP status code (e.g., 200, 404).
       public var status: Int
+      /// Response headers.
       public var headers: [String: String]
+      /// The MIME type of the response body.
       public var mimeType: String?
+      /// The response body data.
       public var body: Data
 
+      /// Creates a response.
+      ///
+      /// - Parameters:
+      ///   - status: HTTP status code (default: 200).
+      ///   - headers: Response headers (default: empty).
+      ///   - mimeType: MIME type of the body (default: nil).
+      ///   - body: Response body data (default: empty).
       public init(
         status: Int = 200,
         headers: [String: String] = [:],
@@ -158,11 +229,20 @@ public enum VeloxRuntimeWry {
       }
     }
 
+    /// A closure that handles custom protocol requests.
+    ///
+    /// Return `nil` to indicate the request was not handled.
     public typealias Handler = @Sendable (Request) -> Response?
 
+    /// The URL scheme this handler responds to (e.g., "app", "ipc").
     public let scheme: String
     let handler: Handler
 
+    /// Creates a custom protocol handler.
+    ///
+    /// - Parameters:
+    ///   - scheme: The URL scheme to handle.
+    ///   - handler: The closure that processes requests.
     public init(scheme: String, handler: @escaping Handler) {
       self.scheme = scheme
       self.handler = handler

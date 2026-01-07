@@ -1,0 +1,176 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Your First Velox App") {
+        Create a complete Velox application from scratch. You'll learn
+        how to set up a project, create a window, and handle basic
+        communication between Swift and JavaScript.
+
+        @Image(source: "tutorial-first-app.png", alt: "A Velox application window")
+    }
+
+    @Section(title: "Create the Project") {
+        @ContentAndMedia {
+            We'll start by creating a new Swift package with Velox
+            as a dependency. This gives you a clean project structure
+            to build upon.
+        }
+
+        @Steps {
+            @Step {
+                Create a new directory for your project and initialize
+                a Swift package.
+
+                @Code(name: "Terminal", file: "01-01-create-project.sh")
+            }
+
+            @Step {
+                Open `Package.swift` and add Velox as a dependency.
+                This pulls in the Velox runtime and all its capabilities.
+
+                @Code(name: "Package.swift", file: "01-02-package-swift.swift")
+            }
+
+            @Step {
+                Create the configuration file `velox.json` in your
+                project root. This defines your app's identity and
+                window settings.
+
+                @Code(name: "velox.json", file: "01-03-velox-json.json")
+            }
+        }
+    }
+
+    @Section(title: "Write the Application") {
+        @ContentAndMedia {
+            Now let's write the Swift code that creates a window
+            and serves HTML content. We'll also set up a simple
+            command that the frontend can call.
+        }
+
+        @Steps {
+            @Step {
+                Create `Sources/MyApp/main.swift` with the basic
+                app structure. This imports Velox and sets up the
+                entry point.
+
+                @Code(name: "main.swift", file: "01-04-main-basic.swift")
+            }
+
+            @Step {
+                Add the HTML content that will be displayed in the
+                window. For now, we'll embed it directly in Swift.
+
+                @Code(name: "main.swift", file: "01-05-main-html.swift")
+            }
+
+            @Step {
+                Register a command that the frontend can call. Commands
+                are the bridge between JavaScript and Swift.
+
+                @Code(name: "main.swift", file: "01-06-main-command.swift")
+            }
+
+            @Step {
+                Complete the app by wiring everything together with
+                `VeloxAppBuilder`. This creates the window and starts
+                the event loop.
+
+                @Code(name: "main.swift", file: "01-07-main-complete.swift")
+            }
+        }
+    }
+
+    @Section(title: "Build and Run") {
+        @ContentAndMedia {
+            With the code in place, let's build and run the app to
+            see it in action.
+        }
+
+        @Steps {
+            @Step {
+                Build the project using Swift Package Manager. The first
+                build takes longer as it compiles the Rust FFI layer.
+
+                @Code(name: "Terminal", file: "01-08-build.sh")
+            }
+
+            @Step {
+                Run your app! A window should appear with your HTML
+                content. Try entering a name and clicking the button.
+
+                @Code(name: "Terminal", file: "01-09-run.sh")
+            }
+
+            @Step {
+                Congratulations! You've built your first Velox app.
+                The greeting message comes from Swift, demonstrating
+                the IPC bridge working.
+
+                @Image(source: "tutorial-first-app-running.png", alt: "The running application")
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            What is the purpose of `VeloxAppBuilder`?
+
+            @Choice(isCorrect: false) {
+                It compiles your Swift code.
+
+                @Justification(reaction: "Try again!") {
+                    Swift Package Manager handles compilation.
+                    `VeloxAppBuilder` is for configuring and running your app.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                It configures and starts your Velox application.
+
+                @Justification(reaction: "Correct!") {
+                    `VeloxAppBuilder` lets you register protocols,
+                    commands, and plugins, then starts the event loop.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                It generates the HTML for your UI.
+
+                @Justification(reaction: "Not quite!") {
+                    You provide the HTML yourself. `VeloxAppBuilder`
+                    configures how it's served and how commands work.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            How does JavaScript call Swift code in Velox?
+
+            @Choice(isCorrect: true) {
+                Using `window.Velox.invoke('command', args)`
+
+                @Justification(reaction: "That's right!") {
+                    Velox injects a helper that sends requests to
+                    your registered command handlers via IPC.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                By importing Swift modules directly.
+
+                @Justification(reaction: "Not possible!") {
+                    JavaScript runs in a WebView and can't directly
+                    import Swift. Commands bridge the gap via IPC.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Through WebSocket connections.
+
+                @Justification(reaction: "Close, but no!") {
+                    Velox uses custom URL protocols (`ipc://`) for
+                    communication, not WebSockets.
+                }
+            }
+        }
+    }
+}

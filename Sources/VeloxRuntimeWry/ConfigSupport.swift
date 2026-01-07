@@ -212,24 +212,57 @@ public extension VeloxRuntimeWry.Window {
 
 // MARK: - App Builder
 
-/// Helper class for building a Velox app from configuration
+/// A builder for creating Velox applications from configuration.
+///
+/// `VeloxAppBuilder` provides a fluent API for configuring and building
+/// desktop applications. It handles:
+/// - Loading configuration from `velox.json`
+/// - Plugin registration and lifecycle
+/// - Custom protocol handlers
+/// - Window and webview creation
+/// - Security headers and CSP
+///
+/// Example:
+/// ```swift
+/// try VeloxAppBuilder()
+///   .plugin(ClipboardPlugin())
+///   .commands { registry in
+///     registry.register("greet") { _ in .ok("Hello!") }
+///   }
+///   .run()
+/// ```
+///
+/// Or with a custom event loop:
+/// ```swift
+/// let builder = try VeloxAppBuilder()
+/// let eventLoop = VeloxRuntimeWry.EventLoop()!
+/// let windows = builder.build(eventLoop: eventLoop)
+/// // Custom event handling...
+/// eventLoop.run()
+/// ```
 public final class VeloxAppBuilder {
-  /// The app configuration
+  /// The app configuration loaded from `velox.json`.
   public let config: VeloxConfig
 
   private var protocolHandlers: [String: VeloxRuntimeWry.CustomProtocol] = [:]
   private var windowSetupHandlers: [String: (VeloxRuntimeWry.Window, VeloxRuntimeWry.Webview?) -> Void] = [:]
 
-  /// Event manager for this app
+  /// Event manager for frontend-backend communication.
   public let eventManager: VeloxEventManager
 
-  /// State container for managed application state
+  /// State container for managed application state.
+  ///
+  /// Use ``manage(_:)`` to add state and ``state()`` to retrieve it.
   public let stateContainer: StateContainer
 
-  /// Command registry for this app
+  /// Command registry for IPC commands.
+  ///
+  /// Use ``commands(scheme:_:)`` to register commands.
   public let commandRegistry: CommandRegistry
 
-  /// Permission manager for access control
+  /// Permission manager for access control.
+  ///
+  /// Configured automatically from the security section of `velox.json`.
   public let permissionManager: PermissionManager
 
   /// Initialize with a VeloxConfig

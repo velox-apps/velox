@@ -1,0 +1,88 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Managing State") {
+        Learn how to share data between commands using Velox's
+        state management system. You'll build a counter app that
+        persists state across command calls.
+
+        @Image(source: "tutorial-state.png", alt: "State management")
+    }
+
+    @Section(title: "Creating State") {
+        @ContentAndMedia {
+            State classes hold your application data. They must be
+            thread-safe since commands can run concurrently.
+        }
+
+        @Steps {
+            @Step {
+                Define a state class with thread-safe properties.
+                Use NSLock to protect shared data.
+
+                @Code(name: "AppState.swift", file: "04-01-state-class.swift")
+            }
+
+            @Step {
+                Register the state with your app builder. This makes
+                it available to all commands.
+
+                @Code(name: "main.swift", file: "04-02-register-state.swift")
+            }
+        }
+    }
+
+    @Section(title: "Accessing State in Commands") {
+        @ContentAndMedia {
+            Use the command context to retrieve state in your handlers.
+        }
+
+        @Steps {
+            @Step {
+                With the command DSL, access state via the context
+                parameter.
+
+                @Code(name: "Commands.swift", file: "04-03-access-dsl.swift")
+            }
+
+            @Step {
+                With the @VeloxCommand macro, add a CommandContext
+                parameter to receive state access.
+
+                @Code(name: "Commands.swift", file: "04-04-access-macro.swift")
+            }
+        }
+    }
+
+    @Section(title: "Building a Counter App") {
+        @ContentAndMedia {
+            Put it all together with a complete counter application.
+        }
+
+        @Steps {
+            @Step {
+                Create the complete state class with increment,
+                decrement, and reset operations.
+
+                @Code(name: "CounterState.swift", file: "04-05-counter-state.swift")
+            }
+
+            @Step {
+                Register commands for all counter operations.
+
+                @Code(name: "main.swift", file: "04-06-counter-commands.swift")
+            }
+
+            @Step {
+                Build the frontend UI with buttons and a display.
+
+                @Code(name: "index.html", file: "04-07-counter-ui.html")
+            }
+
+            @Step {
+                Add JavaScript to wire up the buttons and display
+                the current count.
+
+                @Code(name: "app.js", file: "04-08-counter-js.js")
+            }
+        }
+    }
+}

@@ -196,8 +196,11 @@ public struct VeloxCommandMacro: PeerMacro {
   }
 }
 
+/// Errors that can occur during `@VeloxCommand` macro expansion.
 enum VeloxCommandMacroError: Error, CustomStringConvertible {
+  /// The macro was applied to something other than a function.
   case notAFunction
+  /// The function is missing a return type declaration.
   case missingReturnType
 
   var description: String {
@@ -210,6 +213,7 @@ enum VeloxCommandMacroError: Error, CustomStringConvertible {
   }
 }
 
+/// The Swift compiler plugin that provides Velox macros.
 @main
 struct VeloxMacrosPlugin: CompilerPlugin {
   let providingMacros: [Macro.Type] = [

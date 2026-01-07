@@ -4,13 +4,19 @@ import Foundation
 import Logging
 import VeloxRuntime
 
-/// Result of running app with file watching
+/// Result of running app with file watching.
+///
+/// Used internally by the dev command to determine whether to rebuild or restart.
 enum WatchResult {
+  /// Files changed while the app was running.
   case fileChanged(FileChangeResult)
+  /// The app exited on its own (crash or user close).
   case appExited
 }
 
-/// Runs the app and file watcher concurrently, returns when either completes
+/// Runs the app and file watcher concurrently, returning when either completes.
+///
+/// - Returns: A ``WatchResult`` indicating whether files changed or the app exited.
 func runWithFileWatching(
   processManager: ProcessManager,
   fileWatcher: FileWatcher,
@@ -75,6 +81,29 @@ func runWithFileWatching(
   }
 }
 
+/// Runs the Velox app in development mode with hot reloading.
+///
+/// The dev command:
+/// 1. Loads `velox.json` configuration
+/// 2. Runs `beforeDevCommand` if configured (e.g., start Vite)
+/// 3. Waits for dev server if `devUrl` is configured
+/// 4. Builds and runs the Swift app
+/// 5. Watches for file changes and rebuilds/restarts as needed
+///
+/// Usage:
+/// ```bash
+/// # Auto-detect executable target
+/// velox dev
+///
+/// # Specify target explicitly
+/// velox dev MyAppTarget
+///
+/// # Override dev server port
+/// velox dev --port 3001
+///
+/// # Run without file watching
+/// velox dev --no-watch
+/// ```
 struct DevCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "dev",

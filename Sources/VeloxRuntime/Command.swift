@@ -6,10 +6,33 @@ import Foundation
 
 // MARK: - Command Result
 
-/// The result of a command execution
+/// The result of a command execution.
+///
+/// Commands return one of three result types:
+/// - `.success`: A JSON-encodable value to return to the frontend
+/// - `.binary`: Raw binary data with a MIME type (images, files, etc.)
+/// - `.error`: An error with a code and message
+///
+/// Example:
+/// ```swift
+/// registry.register("greet") { ctx in
+///   let name = ctx.decodeArgs()["name"] as? String ?? "World"
+///   return .ok(["message": "Hello, \(name)!"])
+/// }
+///
+/// registry.register("getImage") { ctx in
+///   let imageData = loadPNGImage()
+///   return .image(imageData, type: .png)
+/// }
+/// ```
 public enum CommandResult: Sendable {
+  /// A successful result with an encodable value.
   case success(Encodable & Sendable)
+
+  /// A binary result with raw data and MIME type.
   case binary(Data, mimeType: String)
+
+  /// An error result with details about what went wrong.
   case error(CommandError)
 
   /// Create a success result with any encodable value
@@ -48,14 +71,23 @@ public enum CommandResult: Sendable {
   }
 }
 
-/// Image types for binary responses
+/// Image formats for binary command responses.
+///
+/// Use these types with ``CommandResult/image(_:type:)`` to return images
+/// with the correct MIME type.
 public enum ImageType: Sendable {
+  /// PNG format (image/png)
   case png
+  /// JPEG format (image/jpeg)
   case jpeg
+  /// GIF format (image/gif)
   case gif
+  /// WebP format (image/webp)
   case webp
+  /// SVG format (image/svg+xml)
   case svg
 
+  /// The MIME type string for this image format.
   public var mimeType: String {
     switch self {
     case .png: return "image/png"
@@ -67,19 +99,46 @@ public enum ImageType: Sendable {
   }
 }
 
-/// An empty response for commands that don't return a value
+/// An empty response for commands that don't return a value.
+///
+/// Used internally by ``CommandResult/ok`` when a command succeeds
+/// but has no meaningful return value.
 public struct EmptyResponse: Codable, Sendable {}
 
-/// A command error
+/// An error returned from a command handler.
+///
+/// Command errors include a machine-readable code and a human-readable message.
+/// The code can be used by frontend code to handle specific error types.
+///
+/// Example:
+/// ```swift
+/// registry.register("readFile") { ctx in
+///   guard let path = ctx.decodeArgs()["path"] as? String else {
+///     return .err(CommandError(code: "InvalidArgs", message: "Missing path"))
+///   }
+///   // ...
+/// }
+/// ```
 public struct CommandError: Error, Sendable {
+  /// A machine-readable error code (e.g., "NotFound", "PermissionDenied").
   public let code: String
+
+  /// A human-readable description of the error.
   public let message: String
 
+  /// Creates a command error with a code and message.
+  ///
+  /// - Parameters:
+  ///   - code: A machine-readable error code.
+  ///   - message: A human-readable error description.
   public init(code: String, message: String) {
     self.code = code
     self.message = message
   }
 
+  /// Creates a command error with a message and default "Error" code.
+  ///
+  /// - Parameter message: A human-readable error description.
   public init(_ message: String) {
     self.code = "Error"
     self.message = message
@@ -108,26 +167,59 @@ public protocol WebviewHandle: Sendable {
 
 // MARK: - Command Context
 
-/// Context passed to command handlers
+/// Context passed to command handlers providing request details and utilities.
+///
+/// The command context contains everything a handler needs:
+/// - Request data (command name, raw body, headers)
+/// - Webview information (ID and handle for JavaScript evaluation)
+/// - State access (managed application state)
+///
+/// Example:
+/// ```swift
+/// registry.register("getUserData") { ctx in
+///   // Access request arguments
+///   let userId = ctx.decodeArgs()["userId"] as? String
+///
+///   // Access managed state
+///   let db: DatabaseService = ctx.requireState()
+///
+///   // Access webview for direct JavaScript evaluation
+///   ctx.webview?.evaluate(script: "console.log('Loading...')")
+///
+///   // Return result
+///   return .ok(db.getUser(userId))
+/// }
+/// ```
 public struct CommandContext: @unchecked Sendable {
-  /// The command name being invoked
+  /// The name of the command being invoked.
   public let command: String
 
-  /// The raw request body as Data
+  /// The raw request body as JSON data.
   public let rawBody: Data
 
-  /// Request headers
+  /// HTTP-style request headers from the IPC call.
   public let headers: [String: String]
 
-  /// The webview identifier that made the request
+  /// The identifier of the webview that made this request.
   public let webviewId: String
 
-  /// The state container for accessing managed state
+  /// The state container for accessing managed application state.
   public let stateContainer: StateContainer
 
-  /// Handle to the requesting webview (nil if not available)
+  /// Handle to the requesting webview for JavaScript evaluation and events.
+  ///
+  /// May be `nil` if the webview is no longer available.
   public let webview: WebviewHandle?
 
+  /// Creates a command context with the specified values.
+  ///
+  /// - Parameters:
+  ///   - command: The command name.
+  ///   - rawBody: The raw JSON request body.
+  ///   - headers: Request headers.
+  ///   - webviewId: The requesting webview's identifier.
+  ///   - stateContainer: The application state container.
+  ///   - webview: Handle to the requesting webview.
   public init(
     command: String,
     rawBody: Data,
@@ -144,13 +236,33 @@ public struct CommandContext: @unchecked Sendable {
     self.webview = webview
   }
 
-  /// Decode the request body as a specific type
+  /// Decodes the request body as a specific `Decodable` type.
+  ///
+  /// Use this for type-safe argument parsing:
+  /// ```swift
+  /// struct GreetArgs: Decodable {
+  ///   let name: String
+  /// }
+  /// let args = try ctx.decode(GreetArgs.self)
+  /// ```
+  ///
+  /// - Parameter type: The type to decode the request body as.
+  /// - Returns: The decoded value.
+  /// - Throws: `DecodingError` if decoding fails.
   public func decode<T: Decodable>(_ type: T.Type) throws -> T {
     let decoder = JSONDecoder()
     return try decoder.decode(type, from: rawBody)
   }
 
-  /// Decode the request body as a dictionary
+  /// Decodes the request body as a dictionary for dynamic argument access.
+  ///
+  /// Use this when you don't have a specific struct for the arguments:
+  /// ```swift
+  /// let args = ctx.decodeArgs()
+  /// let name = args["name"] as? String ?? "World"
+  /// ```
+  ///
+  /// - Returns: A dictionary of argument values, or empty dictionary if decoding fails.
   public func decodeArgs() -> [String: Any] {
     guard !rawBody.isEmpty,
           let json = try? JSONSerialization.jsonObject(with: rawBody) as? [String: Any]
@@ -160,12 +272,19 @@ public struct CommandContext: @unchecked Sendable {
     return json
   }
 
-  /// Get managed state of type T
+  /// Retrieves managed state of the specified type.
+  ///
+  /// - Returns: The state value if registered, or `nil` if not found.
   public func state<T>() -> T? {
     stateContainer.get()
   }
 
-  /// Get managed state of type T, or crash if not registered
+  /// Retrieves managed state of the specified type, crashing if not registered.
+  ///
+  /// Use this when you're certain the state has been registered during setup.
+  ///
+  /// - Returns: The state value.
+  /// - Precondition: State of type `T` must be registered.
   public func requireState<T>() -> T {
     stateContainer.require()
   }
@@ -173,25 +292,60 @@ public struct CommandContext: @unchecked Sendable {
 
 // MARK: - Command Handler Types
 
-/// A type-erased command handler
+/// A type-erased command handler that receives context and returns a result.
+///
+/// This is the fundamental handler type used internally by the command registry.
+/// Prefer using typed registration methods that provide automatic argument decoding.
 public typealias AnyCommandHandler = @Sendable (CommandContext) -> CommandResult
 
-/// A command handler that takes typed arguments
+/// A command handler that receives decoded arguments along with the context.
+///
+/// Use this signature with `register(_:args:handler:)` for type-safe argument handling.
 public typealias TypedCommandHandler<Args: Decodable> = @Sendable (Args, CommandContext) -> CommandResult
 
-/// A simple command handler with no arguments
+/// A command handler that only needs the context (no arguments).
+///
+/// Use this for commands that don't require any input parameters.
 public typealias SimpleCommandHandler = @Sendable (CommandContext) -> CommandResult
 
 // MARK: - Command Registry
 
-/// Registry for command handlers
+/// A thread-safe registry for command handlers.
+///
+/// The command registry stores and invokes command handlers by name.
+/// Commands can be registered with various signatures for flexibility.
+///
+/// Example:
+/// ```swift
+/// let registry = CommandRegistry()
+///
+/// // Simple handler
+/// registry.register("ping") { _ in .ok("pong") }
+///
+/// // Typed arguments
+/// struct GreetArgs: Codable { let name: String }
+/// registry.register("greet", args: GreetArgs.self) { args, _ in
+///   .ok("Hello, \(args.name)!")
+/// }
+///
+/// // Typed arguments and return value
+/// registry.register("add", args: MathArgs.self, returning: Int.self) { args, _ in
+///   args.a + args.b
+/// }
+/// ```
 public final class CommandRegistry: @unchecked Sendable {
   private var handlers: [String: AnyCommandHandler] = [:]
   private let lock = NSLock()
 
+  /// Creates an empty command registry.
   public init() {}
 
-  /// Register a command handler
+  /// Registers a command handler with a given name.
+  ///
+  /// - Parameters:
+  ///   - name: The command name to register.
+  ///   - handler: The handler closure to invoke when the command is called.
+  /// - Returns: Self for method chaining.
   @discardableResult
   public func register(_ name: String, handler: @escaping AnyCommandHandler) -> Self {
     lock.lock()
@@ -200,7 +354,16 @@ public final class CommandRegistry: @unchecked Sendable {
     return self
   }
 
-  /// Register a typed command handler with automatic argument decoding
+  /// Registers a typed command handler with automatic argument decoding.
+  ///
+  /// The arguments are automatically decoded from JSON before the handler is called.
+  /// If decoding fails, an error response is returned.
+  ///
+  /// - Parameters:
+  ///   - name: The command name to register.
+  ///   - args: The type to decode arguments as.
+  ///   - handler: The handler receiving decoded arguments and context.
+  /// - Returns: Self for method chaining.
   @discardableResult
   public func register<Args: Decodable & Sendable>(
     _ name: String,
@@ -217,7 +380,17 @@ public final class CommandRegistry: @unchecked Sendable {
     }
   }
 
-  /// Register a command that returns a Codable result
+  /// Registers a command with typed arguments and return value.
+  ///
+  /// This is the most ergonomic registration method. Arguments are decoded,
+  /// the handler can throw errors, and the result is automatically encoded.
+  ///
+  /// - Parameters:
+  ///   - name: The command name to register.
+  ///   - args: The type to decode arguments as.
+  ///   - returning: The return type (for documentation, not used at runtime).
+  ///   - handler: The handler that processes arguments and returns a result.
+  /// - Returns: Self for method chaining.
   @discardableResult
   public func register<Args: Decodable & Sendable, Result: Encodable & Sendable>(
     _ name: String,
@@ -238,7 +411,15 @@ public final class CommandRegistry: @unchecked Sendable {
     }
   }
 
-  /// Register a simple command that just needs context
+  /// Registers a command that takes no arguments but returns a typed result.
+  ///
+  /// Use this for commands that don't need input but produce output.
+  ///
+  /// - Parameters:
+  ///   - name: The command name to register.
+  ///   - returning: The return type (for documentation, not used at runtime).
+  ///   - handler: The handler that processes context and returns a result.
+  /// - Returns: Self for method chaining.
   @discardableResult
   public func register<Result: Encodable & Sendable>(
     _ name: String,
@@ -323,14 +504,17 @@ public final class CommandRegistry: @unchecked Sendable {
     return values
   }
 
-  /// Check if a command is registered
+  /// Checks if a command is registered.
+  ///
+  /// - Parameter name: The command name to check.
+  /// - Returns: `true` if the command is registered.
   public func hasCommand(_ name: String) -> Bool {
     lock.lock()
     defer { lock.unlock() }
     return handlers[name] != nil
   }
 
-  /// Get all registered command names
+  /// All registered command names.
   public var commandNames: [String] {
     lock.lock()
     defer { lock.unlock() }
@@ -340,12 +524,26 @@ public final class CommandRegistry: @unchecked Sendable {
 
 // MARK: - Command Response
 
-/// A command response with status, headers, and body
+/// An HTTP-style response from a command.
+///
+/// Contains a status code, headers, and body data. Used internally
+/// to format responses for the IPC layer.
 public struct CommandResponse: Sendable {
+  /// The HTTP status code (200 for success, 400 for errors).
   public let status: Int
+
+  /// Response headers, typically including Content-Type.
   public let headers: [String: String]
+
+  /// The response body data.
   public let body: Data
 
+  /// Creates a command response.
+  ///
+  /// - Parameters:
+  ///   - status: HTTP status code.
+  ///   - headers: Response headers.
+  ///   - body: Response body data.
   public init(status: Int, headers: [String: String], body: Data) {
     self.status = status
     self.headers = headers
@@ -435,15 +633,33 @@ private struct AnyEncodable: Encodable {
 
 // MARK: - Convenience Argument Types
 
-/// Empty arguments for commands that don't need any
+/// Empty arguments for commands that don't need any input.
+///
+/// Use this as the argument type for commands that take no parameters:
+/// ```swift
+/// registry.register("getVersion", args: NoArgs.self) { _, _ in
+///   .ok(["version": "1.0.0"])
+/// }
+/// ```
 public struct NoArgs: Codable, Sendable {
+  /// Creates an empty arguments instance.
   public init() {}
 }
 
-/// Single string argument - accepts "value", "theArgument", "arg", or "argument" keys
+/// A single string argument with flexible key matching.
+///
+/// Accepts JSON with any of these keys: `value`, `theArgument`, `arg`, `argument`.
+///
+/// Example frontend calls:
+/// ```javascript
+/// invoke('myCommand', { value: 'hello' });
+/// invoke('myCommand', { arg: 'hello' });
+/// ```
 public struct StringArg: Sendable {
+  /// The string value from the request.
   public let value: String
 
+  /// Creates a string argument with the specified value.
   public init(value: String) {
     self.value = value
   }
@@ -475,10 +691,20 @@ extension StringArg: Decodable {
   }
 }
 
-/// Single integer argument - accepts "value", "number", or "n" keys
+/// A single integer argument with flexible key matching.
+///
+/// Accepts JSON with any of these keys: `value`, `number`, `n`.
+///
+/// Example frontend calls:
+/// ```javascript
+/// invoke('myCommand', { value: 42 });
+/// invoke('myCommand', { n: 42 });
+/// ```
 public struct IntArg: Sendable {
+  /// The integer value from the request.
   public let value: Int
 
+  /// Creates an integer argument with the specified value.
   public init(value: Int) {
     self.value = value
   }

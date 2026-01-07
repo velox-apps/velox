@@ -1,0 +1,84 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Type-Safe Commands") {
+        Dive deeper into the command system with advanced patterns:
+        custom response types, optional arguments, and the command
+        registry DSL.
+
+        @Image(source: "tutorial-types.png", alt: "Type-safe commands")
+    }
+
+    @Section(title: "Custom Response Types") {
+        @ContentAndMedia {
+            Return rich, structured data from your commands using
+            custom Codable types.
+        }
+
+        @Steps {
+            @Step {
+                Define response types that match your domain model.
+                These are automatically serialized to JSON.
+
+                @Code(name: "Types.swift", file: "03-01-response-types.swift")
+            }
+
+            @Step {
+                Use these types in your command handlers. The type
+                system ensures consistency between Swift and JavaScript.
+
+                @Code(name: "Commands.swift", file: "03-02-typed-commands.swift")
+            }
+
+            @Step {
+                Access the structured data in JavaScript. The response
+                is automatically parsed from JSON.
+
+                @Code(name: "app.js", file: "03-03-typed-frontend.js")
+            }
+        }
+    }
+
+    @Section(title: "Optional Arguments") {
+        @ContentAndMedia {
+            Handle optional parameters gracefully with Swift's
+            Optional type.
+        }
+
+        @Steps {
+            @Step {
+                Define arguments with optional properties. Missing
+                JSON fields become nil.
+
+                @Code(name: "Args.swift", file: "03-04-optional-args.swift")
+            }
+
+            @Step {
+                Use default values and nil-coalescing in your handlers.
+
+                @Code(name: "Commands.swift", file: "03-05-optional-handling.swift")
+            }
+        }
+    }
+
+    @Section(title: "The Command DSL") {
+        @ContentAndMedia {
+            The command registry DSL gives you fine-grained control
+            over command registration.
+        }
+
+        @Steps {
+            @Step {
+                Use the `commands` builder with explicit type parameters
+                for maximum type safety.
+
+                @Code(name: "Registry.swift", file: "03-06-dsl-basic.swift")
+            }
+
+            @Step {
+                Combine multiple registries and compose them for
+                better organization.
+
+                @Code(name: "Registry.swift", file: "03-07-dsl-compose.swift")
+            }
+        }
+    }
+}

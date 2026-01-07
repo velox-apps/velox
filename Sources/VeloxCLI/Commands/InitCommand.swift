@@ -3,6 +3,24 @@ import Darwin
 import Foundation
 import Logging
 
+/// Initializes a new Velox project or adds Velox to an existing Swift package.
+///
+/// The init command:
+/// 1. Creates `velox.json` with default configuration
+/// 2. If no `Package.swift` exists, creates one with Velox dependencies
+/// 3. Creates a basic `main.swift` and `assets/index.html`
+///
+/// Usage:
+/// ```bash
+/// # Initialize in current directory
+/// velox init
+///
+/// # Specify app name and identifier
+/// velox init --name MyApp --identifier com.example.myapp
+///
+/// # Overwrite existing files
+/// velox init --force
+/// ```
 struct InitCommand: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "init",

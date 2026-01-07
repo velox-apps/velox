@@ -1,0 +1,14 @@
+{
+    "productName": "MyApp",
+    "version": "1.0.0",
+    "identifier": "com.example.myapp",
+    "app": {
+        "windows": [{
+            "label": "main",
+            "title": "My First Velox App",
+            "width": 800,
+            "height": 600,
+            "url": "app://localhost/"
+        }]
+    }
+}
