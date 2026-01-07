@@ -53,7 +53,19 @@ jobs:
             --output-path ./docs
 
           # Add redirect index.html at root
-          cp Sources/VeloxRuntime/VeloxRuntime.docc/Resources/index.html ./docs/index.html
+          cat > ./docs/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=documentation/veloxruntime/">
+              <title>Redirecting to Velox Documentation</title>
+          </head>
+          <body>
+              <p>Redirecting to <a href="documentation/veloxruntime/">Velox Documentation</a>...</p>
+          </body>
+          </html>
+          EOF
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
