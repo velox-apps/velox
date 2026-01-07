@@ -32,9 +32,21 @@ jobs:
         with:
           swift-version: "5.10"
 
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build Rust FFI
+        run: |
+          cd runtime-wry-ffi
+          cargo build
+
+      - name: Build Swift Package
+        run: |
+          swift build --disable-sandbox
+
       - name: Build Documentation
         run: |
-          swift package --allow-writing-to-directory ./docs \
+          swift package --disable-sandbox --allow-writing-to-directory ./docs \
             generate-documentation --target VeloxRuntime \
             --transform-for-static-hosting \
             --hosting-base-path velox \
