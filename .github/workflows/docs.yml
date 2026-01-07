@@ -40,6 +40,9 @@ jobs:
             --hosting-base-path velox \
             --output-path ./docs
 
+          # Add redirect index.html at root
+          cp Sources/VeloxRuntime/VeloxRuntime.docc/Resources/index.html ./docs/index.html
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
