@@ -7,6 +7,10 @@ and fill me with joy.
 
 Discord: [invite](https://discord.gg/nZKv7kkvb)
 
+## Documentation
+
+[Documentation, tutorials and guides](https://velox-apps.github.io/velox/).
+
 ## Building
 
 The Swift package declares a build-tool plugin that automatically compiles the Rust FFI crate
