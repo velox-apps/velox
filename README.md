@@ -9,7 +9,7 @@ Discord: [invite](https://discord.gg/nZKv7kkvb)
 
 ## Documentation
 
-[Documentation, tutorials and guides](https://velox-apps.github.io/velox/).
+[Documentation](https://velox-apps.github.io/velox/) and [Tutorials](https://velox-apps.github.io/velox/tutorials/table-of-contents)
 
 ## Building
 
