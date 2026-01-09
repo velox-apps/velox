@@ -27,6 +27,9 @@ public struct VeloxConfig: Codable, Sendable {
   /// Build configuration (optional)
   public var build: BuildConfig?
 
+  /// Bundle configuration (optional)
+  public var bundle: BundleConfig?
+
   enum CodingKeys: String, CodingKey {
     case schema = "$schema"
     case productName
@@ -34,6 +37,7 @@ public struct VeloxConfig: Codable, Sendable {
     case identifier
     case app
     case build
+    case bundle
   }
 
   public init(
@@ -41,13 +45,15 @@ public struct VeloxConfig: Codable, Sendable {
     version: String? = nil,
     identifier: String,
     app: AppConfig = AppConfig(),
-    build: BuildConfig? = nil
+    build: BuildConfig? = nil,
+    bundle: BundleConfig? = nil
   ) {
     self.productName = productName
     self.version = version
     self.identifier = identifier
     self.app = app
     self.build = build
+    self.bundle = bundle
   }
 }
 
@@ -643,6 +649,169 @@ public struct BuildConfig: Codable, Sendable {
     self.beforeBuildCommand = beforeBuildCommand
     self.beforeBundleCommand = beforeBundleCommand
     self.env = env
+  }
+}
+
+// MARK: - Bundle Configuration
+
+/// Bundle configuration for packaging apps
+public struct BundleConfig: Codable, Sendable {
+  /// Whether bundling is enabled
+  public var active: Bool?
+
+  /// Bundle targets (e.g., app, dmg)
+  public var targets: [BundleTarget]?
+
+  /// Bundle icon path(s)
+  public var icon: BundleIcon?
+
+  /// Additional resources to copy into the bundle
+  public var resources: [String]?
+
+  /// macOS-specific bundle settings
+  public var macos: MacOSBundleConfig?
+
+  public init(
+    active: Bool? = nil,
+    targets: [BundleTarget]? = nil,
+    icon: BundleIcon? = nil,
+    resources: [String]? = nil,
+    macos: MacOSBundleConfig? = nil
+  ) {
+    self.active = active
+    self.targets = targets
+    self.icon = icon
+    self.resources = resources
+    self.macos = macos
+  }
+}
+
+public enum BundleTarget: String, Codable, Sendable {
+  case app
+  case dmg
+}
+
+public struct BundleIcon: Codable, Sendable {
+  public let paths: [String]
+
+  public init(_ paths: [String]) {
+    self.paths = paths
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let single = try? container.decode(String.self) {
+      self.paths = [single]
+    } else {
+      self.paths = try container.decode([String].self)
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    if paths.count == 1, let first = paths.first {
+      try container.encode(first)
+    } else {
+      try container.encode(paths)
+    }
+  }
+}
+
+public struct MacOSBundleConfig: Codable, Sendable {
+  /// Minimum supported macOS version (LSMinimumSystemVersion)
+  public var minimumSystemVersion: String?
+
+  /// Path to an Info.plist to merge into the generated plist
+  public var infoPlist: String?
+
+  /// Path to entitlements file for code signing
+  public var entitlements: String?
+
+  /// Code signing identity (e.g., "Developer ID Application: ...")
+  public var signingIdentity: String?
+
+  /// Enable hardened runtime (codesign --options runtime)
+  public var hardenedRuntime: Bool?
+
+  /// Notarization configuration
+  public var notarization: NotarizationConfig?
+
+  /// DMG configuration
+  public var dmg: DmgConfig?
+
+  public init(
+    minimumSystemVersion: String? = nil,
+    infoPlist: String? = nil,
+    entitlements: String? = nil,
+    signingIdentity: String? = nil,
+    hardenedRuntime: Bool? = nil,
+    notarization: NotarizationConfig? = nil,
+    dmg: DmgConfig? = nil
+  ) {
+    self.minimumSystemVersion = minimumSystemVersion
+    self.infoPlist = infoPlist
+    self.entitlements = entitlements
+    self.signingIdentity = signingIdentity
+    self.hardenedRuntime = hardenedRuntime
+    self.notarization = notarization
+    self.dmg = dmg
+  }
+}
+
+public struct NotarizationConfig: Codable, Sendable {
+  /// Keychain profile name for notarytool
+  public var keychainProfile: String?
+
+  /// Apple ID for notarytool
+  public var appleId: String?
+
+  /// Team ID for notarytool
+  public var teamId: String?
+
+  /// App-specific password for notarytool
+  public var password: String?
+
+  /// Wait for notarization to complete
+  public var wait: Bool?
+
+  /// Staple the notarization ticket to the bundle
+  public var staple: Bool?
+
+  public init(
+    keychainProfile: String? = nil,
+    appleId: String? = nil,
+    teamId: String? = nil,
+    password: String? = nil,
+    wait: Bool? = nil,
+    staple: Bool? = nil
+  ) {
+    self.keychainProfile = keychainProfile
+    self.appleId = appleId
+    self.teamId = teamId
+    self.password = password
+    self.wait = wait
+    self.staple = staple
+  }
+}
+
+public struct DmgConfig: Codable, Sendable {
+  /// Whether to create a DMG
+  public var enabled: Bool?
+
+  /// Optional custom DMG name (without extension)
+  public var name: String?
+
+  /// Optional volume name shown when mounting the DMG
+  public var volumeName: String?
+
+  public init(
+    enabled: Bool? = nil,
+    name: String? = nil,
+    volumeName: String? = nil
+  ) {
+    self.enabled = enabled
+    self.name = name
+    self.volumeName = volumeName
   }
 }
 

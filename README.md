@@ -136,6 +136,9 @@ The `--bundle` flag creates a complete macOS app bundle:
 │       └── assets/     # Frontend files (from frontendDist)
 ```
 
+You can also set `bundle.active: true` in `velox.json` to enable bundling without the CLI flag.
+For full macOS bundling details (signing, DMG, notarization), see `Sources/VeloxRuntime/VeloxRuntime.docc/Articles/Bundling.md`.
+
 ### Configuration for CLI
 
 The CLI uses settings from `velox.json`:
@@ -154,6 +157,29 @@ The CLI uses settings from `velox.json`:
     "env": {
       "API_URL": "https://api.example.com",
       "DEBUG": "true"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": "icons/AppIcon.icns",
+    "resources": ["extra-assets"],
+    "macos": {
+      "minimumSystemVersion": "13.0",
+      "infoPlist": "Info.plist",
+      "entitlements": "entitlements.plist",
+      "signingIdentity": "Developer ID Application: Example (ABCDE12345)",
+      "hardenedRuntime": true,
+      "dmg": {
+        "enabled": true,
+        "name": "MyApp",
+        "volumeName": "MyApp"
+      },
+      "notarization": {
+        "keychainProfile": "AC_NOTARY",
+        "wait": true,
+        "staple": true
+      }
     }
   }
 }

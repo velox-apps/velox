@@ -169,11 +169,18 @@ public final class VeloxEventManager: @unchecked Sendable {
   /// Listen for a single event occurrence
   @discardableResult
   public func once(_ eventName: String, handler: @escaping EventCallback) -> EventListenerHandle {
-    var handle: EventListenerHandle!
-    handle = listen(eventName) { [weak self] event in
-      handler(event)
-      self?.unlisten(handle)
+    final class HandleBox {
+      var handle: EventListenerHandle?
     }
+
+    let box = HandleBox()
+    let handle = listen(eventName) { [weak self] event in
+      handler(event)
+      if let handle = box.handle {
+        self?.unlisten(handle)
+      }
+    }
+    box.handle = handle
     return handle
   }
 

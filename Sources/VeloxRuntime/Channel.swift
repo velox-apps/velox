@@ -451,21 +451,21 @@ public enum DownloadEvent: Codable, Sendable {
 
     switch eventType {
     case .started:
-      var dataContainer = try container.nestedContainer(keyedBy: StartedKeys.self, forKey: .data)
+      let dataContainer = try container.nestedContainer(keyedBy: StartedKeys.self, forKey: .data)
       let url = try dataContainer.decode(String.self, forKey: .url)
       let contentLength = try dataContainer.decodeIfPresent(UInt64.self, forKey: .contentLength)
       self = .started(url: url, contentLength: contentLength)
     case .progress:
-      var dataContainer = try container.nestedContainer(keyedBy: ProgressKeys.self, forKey: .data)
+      let dataContainer = try container.nestedContainer(keyedBy: ProgressKeys.self, forKey: .data)
       let bytesReceived = try dataContainer.decode(UInt64.self, forKey: .bytesReceived)
       let totalBytes = try dataContainer.decodeIfPresent(UInt64.self, forKey: .totalBytes)
       self = .progress(bytesReceived: bytesReceived, totalBytes: totalBytes)
     case .finished:
-      var dataContainer = try container.nestedContainer(keyedBy: FinishedKeys.self, forKey: .data)
+      let dataContainer = try container.nestedContainer(keyedBy: FinishedKeys.self, forKey: .data)
       let path = try dataContainer.decode(String.self, forKey: .path)
       self = .finished(path: path)
     case .failed:
-      var dataContainer = try container.nestedContainer(keyedBy: FailedKeys.self, forKey: .data)
+      let dataContainer = try container.nestedContainer(keyedBy: FailedKeys.self, forKey: .data)
       let error = try dataContainer.decode(String.self, forKey: .error)
       self = .failed(error: error)
     }

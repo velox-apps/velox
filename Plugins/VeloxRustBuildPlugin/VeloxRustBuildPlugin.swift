@@ -43,6 +43,7 @@ struct VeloxRustBuildPlugin: BuildToolPlugin {
     let outputDirectory = context.pluginWorkDirectory.appending("Artifacts")
     let cargoTargetDirectory = outputDirectory.appending("cargo-target")
     let stampFile = outputDirectory.appending("velox-runtime-wry-ffi.stamp")
+    let cargoProfile = isReleaseConfiguration() ? "release" : "debug"
 
     var scriptLines = ["set -euo pipefail"]
     if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
@@ -54,6 +55,7 @@ struct VeloxRustBuildPlugin: BuildToolPlugin {
     }
     scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
     scriptLines.append("cd \"\(context.package.directory.string)\"")
+    scriptLines.append("mkdir -p \"runtime-wry-ffi/target/\(cargoProfile)\"")
     scriptLines.append("if ! command -v cargo >/dev/null; then")
     scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
     scriptLines.append("  exit 1")
@@ -109,6 +111,7 @@ extension VeloxRustBuildPlugin: XcodeBuildToolPlugin {
     let outputDirectory = context.pluginWorkDirectory.appending("Artifacts")
     let cargoTargetDirectory = outputDirectory.appending("cargo-target")
     let stampFile = outputDirectory.appending("velox-runtime-wry-ffi.stamp")
+    let cargoProfile = isReleaseConfiguration() ? "release" : "debug"
 
     var scriptLines = ["set -euo pipefail"]
     if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
@@ -120,6 +123,7 @@ extension VeloxRustBuildPlugin: XcodeBuildToolPlugin {
     }
     scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
     scriptLines.append("cd \"\(context.xcodeProject.directory.string)\"")
+    scriptLines.append("mkdir -p \"runtime-wry-ffi/target/\(cargoProfile)\"")
     scriptLines.append("if ! command -v cargo >/dev/null; then")
     scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
     scriptLines.append("  exit 1")

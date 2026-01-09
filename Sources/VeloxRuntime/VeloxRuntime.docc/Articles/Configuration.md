@@ -36,6 +36,7 @@ The `velox.json` file is the central configuration for your Velox application. I
 | `identifier` | String | Reverse-domain bundle identifier |
 | `app` | Object | Application configuration |
 | `build` | Object | Build and development settings |
+| `bundle` | Object | Bundle and distribution settings |
 | `security` | Object | Security policies |
 
 ### App Configuration
@@ -142,6 +143,59 @@ The `velox.json` file is the central configuration for your Velox application. I
 | `beforeBundleCommand` | String | Command to run before bundling |
 | `frontendDist` | String | Directory containing frontend assets |
 | `env` | Object | Environment variables for builds |
+
+### Bundle Configuration (macOS)
+
+```json
+{
+    "bundle": {
+        "active": true,
+        "targets": ["app", "dmg"],
+        "icon": "icons/AppIcon.icns",
+        "resources": ["extra-assets"],
+        "macos": {
+            "minimumSystemVersion": "13.0",
+            "infoPlist": "Info.plist",
+            "entitlements": "entitlements.plist",
+            "signingIdentity": "Developer ID Application: Example (ABCDE12345)",
+            "hardenedRuntime": true,
+            "dmg": {
+                "enabled": true,
+                "name": "MyApp",
+                "volumeName": "MyApp"
+            },
+            "notarization": {
+                "keychainProfile": "AC_NOTARY",
+                "wait": true,
+                "staple": true
+            }
+        }
+    }
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `active` | Bool | Enable bundling without `--bundle` |
+| `targets` | Array | Bundle targets (`app`, `dmg`) |
+| `icon` | String/Array | Path(s) to icon files (macOS expects `.icns`) |
+| `resources` | Array | Extra files or folders to copy into `Contents/Resources` |
+| `macos.minimumSystemVersion` | String | `LSMinimumSystemVersion` override |
+| `macos.infoPlist` | String | Path to a plist to merge into the generated Info.plist |
+| `macos.entitlements` | String | Entitlements file for code signing |
+| `macos.signingIdentity` | String | Code signing identity |
+| `macos.hardenedRuntime` | Bool | Enable hardened runtime for code signing |
+| `macos.dmg.enabled` | Bool | Create a DMG |
+| `macos.dmg.name` | String | DMG filename (without extension) |
+| `macos.dmg.volumeName` | String | DMG volume name |
+| `macos.notarization.keychainProfile` | String | notarytool keychain profile |
+| `macos.notarization.appleId` | String | notarytool Apple ID (if no keychain profile) |
+| `macos.notarization.teamId` | String | notarytool team ID |
+| `macos.notarization.password` | String | notarytool app-specific password |
+| `macos.notarization.wait` | Bool | Wait for notarization to complete |
+| `macos.notarization.staple` | Bool | Staple the notarization ticket |
+
+See <doc:Bundling> for packaging, signing, DMG, and notarization steps.
 
 ### Security Configuration
 

@@ -46,6 +46,7 @@ Communication between your frontend (HTML/JavaScript) and backend (Swift) happen
 - <doc:GettingStarted>
 - <doc:VeloxArchitecture>
 - <doc:Configuration>
+- <doc:Bundling>
 
 ### Commands and IPC
 

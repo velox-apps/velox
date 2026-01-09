@@ -195,7 +195,8 @@ let package = Package(
     .target(
       name: "VeloxPluginDialog",
       dependencies: ["VeloxRuntime", "VeloxRuntimeWry"],
-      path: "Sources/VeloxPluginDialog"
+      path: "Sources/VeloxPluginDialog",
+      exclude: ["DIALOG_LIMITATIONS.md"]
     ),
     .target(
       name: "VeloxPluginClipboard",
@@ -256,32 +257,50 @@ let package = Package(
     .executableTarget(
       name: "State",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/State"
+      path: "Examples/State",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "MultiWindow",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/MultiWindow"
+      path: "Examples/MultiWindow",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "Splashscreen",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Splashscreen"
+      path: "Examples/Splashscreen",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "RunReturn",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/RunReturn"
+      path: "Examples/RunReturn",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "Streaming",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Streaming"
+      path: "Examples/Streaming",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "ChannelStreaming",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/ChannelStreaming"
+      path: "Examples/ChannelStreaming",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "HelloWorld2",
@@ -298,7 +317,8 @@ let package = Package(
       path: "Examples/CommandsManual",
       exclude: ["README.md"],
       resources: [
-        .copy("assets")
+        .copy("assets"),
+        .copy("velox.json")
       ]
     ),
     .executableTarget(
@@ -306,33 +326,49 @@ let package = Package(
       dependencies: ["VeloxRuntimeWry"],
       path: "Examples/Resources",
       resources: [
-        .copy("resources")
+        .copy("resources"),
+        .copy("velox.json")
       ]
     ),
     .executableTarget(
       name: "WindowControls",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/WindowControls"
+      path: "Examples/WindowControls",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "MultiWebView",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/MultiWebView"
+      path: "Examples/MultiWebView",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "DynamicHTML",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/DynamicHTML"
+      path: "Examples/DynamicHTML",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "Events",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Events"
+      path: "Examples/Events",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "Tray",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Tray"
+      path: "Examples/Tray",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "CommandsManualRegistry",
@@ -340,7 +376,8 @@ let package = Package(
       path: "Examples/CommandsManualRegistry",
       exclude: ["README.md"],
       resources: [
-        .copy("assets")
+        .copy("assets"),
+        .copy("velox.json")
       ]
     ),
     .executableTarget(
@@ -349,23 +386,33 @@ let package = Package(
       path: "Examples/Commands",
       exclude: ["README.md"],
       resources: [
-        .copy("assets")
+        .copy("assets"),
+        .copy("velox.json")
       ]
     ),
     .executableTarget(
       name: "Plugins",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Plugins"
+      path: "Examples/Plugins",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "BuiltinPlugins",
       dependencies: ["VeloxRuntimeWry", "VeloxPlugins"],
-      path: "Examples/BuiltinPlugins"
+      path: "Examples/BuiltinPlugins",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "Permissions",
       dependencies: ["VeloxRuntimeWry"],
-      path: "Examples/Permissions"
+      path: "Examples/Permissions",
+      resources: [
+        .copy("velox.json")
+      ]
     ),
     .executableTarget(
       name: "VeloxCLI",

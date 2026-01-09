@@ -22,5 +22,12 @@
     "macOS": {
       "activationPolicy": "regular"
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "macos": {
+      "minimumSystemVersion": "13.0"
+    }
   }
 }
