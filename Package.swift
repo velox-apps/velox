@@ -14,6 +14,10 @@ let package = Package(
       targets: ["VeloxRuntime"]
     ),
     .library(
+      name: "VeloxBundler",
+      targets: ["VeloxBundler"]
+    ),
+    .library(
       name: "VeloxMacros",
       targets: ["VeloxMacros"]
     ),
@@ -165,6 +169,14 @@ let package = Package(
     .target(
       name: "VeloxRuntime",
       path: "Sources/VeloxRuntime"
+    ),
+    .target(
+      name: "VeloxBundler",
+      dependencies: [
+        "VeloxRuntime",
+        .product(name: "Logging", package: "swift-log")
+      ],
+      path: "Sources/VeloxBundler"
     ),
     .target(
       name: "VeloxRuntimeWryFFI",
@@ -417,6 +429,7 @@ let package = Package(
     .executableTarget(
       name: "VeloxCLI",
       dependencies: [
+        "VeloxBundler",
         "VeloxRuntime",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "Logging", package: "swift-log")

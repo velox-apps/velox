@@ -7,16 +7,21 @@ import Glibc
 import VeloxRuntime
 import VeloxRuntimeWryFFI
 
+typealias VeloxCustomProtocolHandlerBridge =
+  @convention(c) (
+    UnsafePointer<VeloxCustomProtocolRequest>?,
+    UnsafeMutablePointer<VeloxCustomProtocolResponse>?,
+    UnsafeMutableRawPointer?
+  ) -> Bool
+
+typealias VeloxCustomProtocolResponseBridge =
+  @convention(c) (UnsafeMutableRawPointer?) -> Void
+
 @_silgen_name("velox_custom_protocol_handler_bridge")
-@discardableResult
-func velox_custom_protocol_handler_bridge_c(
-  _ requestPointer: UnsafePointer<VeloxCustomProtocolRequest>?,
-  _ responsePointer: UnsafeMutablePointer<VeloxCustomProtocolResponse>?,
-  _ userData: UnsafeMutableRawPointer?
-) -> Bool
+private let velox_custom_protocol_handler_bridge_c: VeloxCustomProtocolHandlerBridge
 
 @_silgen_name("velox_custom_protocol_response_bridge")
-func velox_custom_protocol_response_bridge_c(_ userData: UnsafeMutableRawPointer?)
+private let velox_custom_protocol_response_bridge_c: VeloxCustomProtocolResponseBridge
 
 final class VeloxEventStreamMultiplexer<Value> {
   private var continuations: [UUID: AsyncStream<Value>.Continuation] = [:]

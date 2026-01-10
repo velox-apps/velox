@@ -114,7 +114,7 @@ struct InitCommand: AsyncParsableCommand {
     logger.info("Next steps:")
     logger.info("  1. Run 'swift build' to build the project")
     logger.info("  2. Run 'velox dev' to start development")
-    logger.info("  3. Run 'velox build --bundle' to create an app bundle")
+    logger.info("  3. Run 'velox bundle' to create an app bundle")
   }
 
   private func sanitizeIdentifier(_ name: String) -> String {

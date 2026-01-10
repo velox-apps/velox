@@ -12,10 +12,10 @@ configuration to control packaging, optional code signing, DMG creation, and not
 From your app directory (where `velox.json` lives):
 
 ```bash
-velox build --bundle
+velox bundle
 ```
 
-Or set `bundle.active: true` in `velox.json` to enable bundling without the flag.
+You can also use `velox build --bundle` or set `bundle.active: true` in `velox.json`.
 
 ## Bundle Configuration (macOS)
 
@@ -69,6 +69,32 @@ For a release build, bundles are created under:
 .build/release/<Product>.dmg (optional)
 ```
 
+## CLI Bundling
+
+Create a bundle (runs a release build by default):
+
+```bash
+velox bundle
+```
+
+Create a signed + notarized DMG with CLI overrides:
+
+```bash
+velox bundle --dmg \
+  --signing-identity "Developer ID Application: Example (ABCDE12345)" \
+  --notary-keychain-profile "AC_NOTARY"
+```
+
+The bundle command also reads environment overrides like `SIGNING_IDENTITY`,
+`ENTITLEMENTS`, `NOTARY_*`, `DMG_NAME`, `DMG_VOLUME_NAME`, `HARDENED_RUNTIME`,
+and `DMG_ENABLED`.
+
+You can also skip the build step:
+
+```bash
+velox bundle --no-build
+```
+
 ## Makefile Helpers
 
 From the repo root:
@@ -91,6 +117,8 @@ make dmg
 - `NOTARY_KEYCHAIN_PROFILE`: Keychain profile name for `notarytool`.
 - `NOTARY_APPLE_ID` / `NOTARY_TEAM_ID` / `NOTARY_PASSWORD`: Alternative to `NOTARY_KEYCHAIN_PROFILE`.
 - `ENTITLEMENTS`: Optional entitlements plist.
+- `HARDENED_RUNTIME`: Optional override for hardened runtime (`true`/`false`).
+- `DMG_ENABLED`: Optional override to enable DMG creation (`true`/`false`).
 - `DMG_NAME` / `DMG_VOLUME_NAME`: Optional DMG naming overrides.
 
 ## Signing and Notarization

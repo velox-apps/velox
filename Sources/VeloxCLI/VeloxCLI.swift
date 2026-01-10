@@ -5,6 +5,7 @@ import ArgumentParser
 /// Velox CLI provides tools for:
 /// - **Development**: `velox dev` - Run with hot reloading and file watching
 /// - **Building**: `velox build` - Build for production, create app bundles
+/// - **Bundling**: `velox bundle` - Create app bundles for distribution
 /// - **Setup**: `velox init` - Initialize a new Velox project
 ///
 /// Usage:
@@ -15,6 +16,9 @@ import ArgumentParser
 /// # Build release and create .app bundle (macOS)
 /// velox build --release --bundle
 ///
+/// # Create a bundle (macOS)
+/// velox bundle
+///
 /// # Initialize a new project
 /// velox init --name MyApp
 /// ```
@@ -24,7 +28,7 @@ struct VeloxCLI: AsyncParsableCommand {
     commandName: "velox",
     abstract: "Velox development tools",
     version: "0.1.0",
-    subcommands: [DevCommand.self, BuildCommand.self, InitCommand.self],
+    subcommands: [DevCommand.self, BuildCommand.self, BundleCommand.self, InitCommand.self],
     defaultSubcommand: DevCommand.self
   )
 }
