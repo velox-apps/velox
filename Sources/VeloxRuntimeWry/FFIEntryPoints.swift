@@ -118,7 +118,7 @@ func velox_custom_protocol_handler_bridge(
     ffiResponse.mime_type = nil
   }
 
-  ffiResponse.free = velox_custom_protocol_response_bridge
+  ffiResponse.free = velox_custom_protocol_response_free_trampoline
   ffiResponse.user_data = Unmanaged.passRetained(storage).toOpaque()
 
   responsePointer.pointee = ffiResponse

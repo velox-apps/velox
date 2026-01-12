@@ -1,5 +1,25 @@
 #include "velox_runtime_wry_ffi.h"
 
+bool velox_custom_protocol_handler_bridge(
+  const VeloxCustomProtocolRequest *request,
+  VeloxCustomProtocolResponse *response,
+  void *user_data
+);
+
+void velox_custom_protocol_response_bridge(void *user_data);
+
+bool velox_custom_protocol_handler_trampoline(
+  const VeloxCustomProtocolRequest *request,
+  VeloxCustomProtocolResponse *response,
+  void *user_data
+) {
+  return velox_custom_protocol_handler_bridge(request, response, user_data);
+}
+
+void velox_custom_protocol_response_free_trampoline(void *user_data) {
+  velox_custom_protocol_response_bridge(user_data);
+}
+
 // This translation unit ensures the C target is picked up by SwiftPM while
 // leaving all functionality delegated to the Rust static library.
 void velox_runtime_wry_ffi_link_helper(void) {
@@ -74,6 +94,8 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_window_set_ignore_cursor_events;
   (void)velox_window_start_dragging;
   (void)velox_window_start_resize_dragging;
+  (void)velox_custom_protocol_handler_trampoline;
+  (void)velox_custom_protocol_response_free_trampoline;
   (void)velox_webview_build;
   (void)velox_webview_free;
   (void)velox_webview_navigate;

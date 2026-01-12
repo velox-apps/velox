@@ -7,22 +7,6 @@ import Glibc
 import VeloxRuntime
 import VeloxRuntimeWryFFI
 
-typealias VeloxCustomProtocolHandlerBridge =
-  @convention(c) (
-    UnsafePointer<VeloxCustomProtocolRequest>?,
-    UnsafeMutablePointer<VeloxCustomProtocolResponse>?,
-    UnsafeMutableRawPointer?
-  ) -> Bool
-
-typealias VeloxCustomProtocolResponseBridge =
-  @convention(c) (UnsafeMutableRawPointer?) -> Void
-
-@_silgen_name("velox_custom_protocol_handler_bridge")
-private let velox_custom_protocol_handler_bridge_c: VeloxCustomProtocolHandlerBridge
-
-@_silgen_name("velox_custom_protocol_response_bridge")
-private let velox_custom_protocol_response_bridge_c: VeloxCustomProtocolResponseBridge
-
 final class VeloxEventStreamMultiplexer<Value> {
   private var continuations: [UUID: AsyncStream<Value>.Continuation] = [:]
   private let lock = NSLock()
@@ -1554,7 +1538,7 @@ public extension VeloxRuntimeWry {
 
         var definition = VeloxCustomProtocolDefinition()
         definition.scheme = UnsafePointer(schemePointer)
-        definition.handler = velox_custom_protocol_handler_bridge_c
+        definition.handler = velox_custom_protocol_handler_trampoline
         definition.user_data = Unmanaged.passUnretained(box).toOpaque()
         definitions.append(definition)
       }

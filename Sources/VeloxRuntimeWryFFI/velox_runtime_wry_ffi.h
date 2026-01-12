@@ -197,6 +197,14 @@ typedef bool (*VeloxCustomProtocolHandler)(
   void *user_data
 );
 
+bool velox_custom_protocol_handler_trampoline(
+  const VeloxCustomProtocolRequest *request,
+  VeloxCustomProtocolResponse *response,
+  void *user_data
+);
+
+void velox_custom_protocol_response_free_trampoline(void *user_data);
+
 typedef struct {
   const char *scheme;
   VeloxCustomProtocolHandler handler;
