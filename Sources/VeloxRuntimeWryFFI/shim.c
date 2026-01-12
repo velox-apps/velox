@@ -24,6 +24,7 @@ void velox_custom_protocol_response_free_trampoline(void *user_data) {
 // leaving all functionality delegated to the Rust static library.
 void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_runtime_wry_library_name;
+  (void)velox_runtime_wry_ffi_abi_version;
   (void)velox_runtime_wry_crate_version;
   (void)velox_runtime_wry_webview_version;
   (void)velox_event_loop_new;

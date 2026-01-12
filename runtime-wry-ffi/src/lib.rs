@@ -1055,6 +1055,13 @@ pub extern "C" fn velox_runtime_wry_library_name() -> *const c_char {
     cached_cstring(&LIBRARY_NAME, || "VeloxRuntimeWry".to_string())
 }
 
+const VELOX_RUNTIME_WRY_FFI_ABI_VERSION: u32 = 1;
+
+#[no_mangle]
+pub extern "C" fn velox_runtime_wry_ffi_abi_version() -> u32 {
+    VELOX_RUNTIME_WRY_FFI_ABI_VERSION
+}
+
 #[no_mangle]
 pub extern "C" fn velox_runtime_wry_crate_version() -> *const c_char {
     cached_cstring(&RUNTIME_VERSION, || env!("CARGO_PKG_VERSION").to_string())

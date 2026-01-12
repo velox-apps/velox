@@ -94,14 +94,36 @@ public enum VeloxRuntimeWry {
     }
   }
 
+  private static let expectedFfiAbiVersion: UInt32 = 1
+  private static let ffiAbiLock = NSLock()
+  private static var ffiAbiValidated = false
+
+  private static func ensureFfiAbiCompatible() {
+    ffiAbiLock.lock()
+    defer { ffiAbiLock.unlock() }
+    if ffiAbiValidated {
+      return
+    }
+    let runtimeVersion = velox_runtime_wry_ffi_abi_version()
+    guard runtimeVersion == expectedFfiAbiVersion else {
+      fatalError(
+        "VeloxRuntimeWry FFI ABI mismatch (expected \(expectedFfiAbiVersion), got \(runtimeVersion)). " +
+          "Rebuild velox-runtime-wry-ffi and ensure Swift and Rust sources match."
+      )
+    }
+    ffiAbiValidated = true
+  }
+
   /// The canonical module name used when interacting with the Rust side.
   public static var moduleName: String {
-    string(from: velox_runtime_wry_library_name())
+    ensureFfiAbiCompatible()
+    return string(from: velox_runtime_wry_library_name())
   }
 
   /// Version information for the Swift-facing runtime.
   public static var version: Version {
-    Version(
+    ensureFfiAbiCompatible()
+    return Version(
       runtime: string(from: velox_runtime_wry_crate_version()),
       webview: string(from: velox_runtime_wry_webview_version())
     )
@@ -1250,6 +1272,7 @@ public extension VeloxRuntimeWry {
     private var raw: UnsafeMutablePointer<VeloxEventLoopHandle>?
 
     public init?() {
+      VeloxRuntimeWry.ensureFfiAbiCompatible()
       guard let handle = velox_event_loop_new() else {
         return nil
       }

@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 const char *velox_runtime_wry_library_name(void);
+uint32_t velox_runtime_wry_ffi_abi_version(void);
 const char *velox_runtime_wry_crate_version(void);
 const char *velox_runtime_wry_webview_version(void);
 
