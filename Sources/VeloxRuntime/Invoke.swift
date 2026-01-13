@@ -31,7 +31,30 @@ public enum VeloxInvokeBridge {
       if (window.__VELOX_INVOKE__) return;
 
       const pending = new Map();
+      const earlyResponses = new Map();
       let listenerReady = false;
+      let listenerReadyPromise = null;
+
+      function handleInvokePayload(payload, entry) {
+        if (payload.ok) {
+          let result = null;
+          if (payload.resultJSON) {
+            try {
+              result = JSON.parse(payload.resultJSON);
+            } catch (e) {
+              result = null;
+            }
+          }
+          entry.resolve(result);
+        } else {
+          const message = payload.error && payload.error.message ? payload.error.message : 'Command failed';
+          const err = new Error(message);
+          if (payload.error && payload.error.code) {
+            err.code = payload.error.code;
+          }
+          entry.reject(err);
+        }
+      }
 
       function registerListener() {
         if (listenerReady) return true;
@@ -42,47 +65,51 @@ public enum VeloxInvokeBridge {
         window.__VELOX_EVENTS__.listen('\(responseEvent)', (event) => {
           const payload = event && event.payload ? event.payload : {};
           const id = payload.id;
-          if (!id || !pending.has(id)) return;
+          if (!id) return;
 
           const entry = pending.get(id);
-          pending.delete(id);
-
-          if (payload.ok) {
-            let result = null;
-            if (payload.resultJSON) {
-              try {
-                result = JSON.parse(payload.resultJSON);
-              } catch (e) {
-                result = null;
-              }
-            }
-            entry.resolve(result);
-          } else {
-            const message = payload.error && payload.error.message ? payload.error.message : 'Command failed';
-            const err = new Error(message);
-            if (payload.error && payload.error.code) {
-              err.code = payload.error.code;
-            }
-            entry.reject(err);
+          if (!entry) {
+            earlyResponses.set(id, payload);
+            return;
           }
+
+          pending.delete(id);
+          handleInvokePayload(payload, entry);
         });
 
         listenerReady = true;
         return true;
       }
 
-      if (!registerListener()) {
-        const timer = setInterval(() => {
-          if (registerListener()) {
-            clearInterval(timer);
+      function ensureListener() {
+        if (listenerReady) return Promise.resolve();
+        if (listenerReadyPromise) return listenerReadyPromise;
+
+        listenerReadyPromise = new Promise((resolve) => {
+          const tryRegister = () => {
+            if (registerListener()) {
+              resolve();
+              return true;
+            }
+            return false;
+          };
+
+          if (!tryRegister()) {
+            const timer = setInterval(() => {
+              if (tryRegister()) {
+                clearInterval(timer);
+              }
+            }, 50);
           }
-        }, 50);
+        });
+
+        return listenerReadyPromise;
       }
 
+      ensureListener();
+
       async function invoke(command, args = {}) {
-        if (!listenerReady) {
-          registerListener();
-        }
+        await ensureListener();
         const response = await fetch(`ipc://localhost/${command}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -112,7 +139,15 @@ public enum VeloxInvokeBridge {
         const result = data ? data.result : null;
         if (result && result.__veloxPending && result.id) {
           return new Promise((resolve, reject) => {
-            pending.set(result.id, { resolve, reject });
+            const entry = { resolve, reject };
+            pending.set(result.id, entry);
+
+            const early = earlyResponses.get(result.id);
+            if (early) {
+              earlyResponses.delete(result.id);
+              pending.delete(result.id);
+              handleInvokePayload(early, entry);
+            }
           });
         }
 
