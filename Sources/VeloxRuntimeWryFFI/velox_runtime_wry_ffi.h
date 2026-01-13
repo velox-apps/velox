@@ -220,6 +220,7 @@ typedef struct VeloxCustomProtocolList {
 typedef struct {
   const char *url;
   VeloxCustomProtocolList custom_protocols;
+  bool devtools;
   /// If true, create as a child webview with bounds
   bool is_child;
   /// X position for child webview (logical pixels)

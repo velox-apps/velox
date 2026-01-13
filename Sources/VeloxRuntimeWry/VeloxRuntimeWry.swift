@@ -94,7 +94,7 @@ public enum VeloxRuntimeWry {
     }
   }
 
-  private static let expectedFfiAbiVersion: UInt32 = 1
+  private static let expectedFfiAbiVersion: UInt32 = 2
   private static let ffiAbiLock = NSLock()
   private static var ffiAbiValidated = false
 
@@ -118,6 +118,14 @@ public enum VeloxRuntimeWry {
   public static var moduleName: String {
     ensureFfiAbiCompatible()
     return string(from: velox_runtime_wry_library_name())
+  }
+
+  public static var defaultDevtoolsEnabled: Bool {
+#if DEBUG
+    return true
+#else
+    return false
+#endif
   }
 
   /// Version information for the Swift-facing runtime.
@@ -281,6 +289,7 @@ public enum VeloxRuntimeWry {
   public struct WebviewConfiguration: Sendable {
     public var url: String
     public var customProtocols: [CustomProtocol]
+    public var devtools: Bool
     /// If true, create as a child webview with specific bounds instead of filling the window.
     public var isChild: Bool
     /// X position for child webview (logical pixels).
@@ -295,6 +304,7 @@ public enum VeloxRuntimeWry {
     public init(
       url: String = "",
       customProtocols: [CustomProtocol] = [],
+      devtools: Bool = VeloxRuntimeWry.defaultDevtoolsEnabled,
       isChild: Bool = false,
       x: Double = 0,
       y: Double = 0,
@@ -303,6 +313,7 @@ public enum VeloxRuntimeWry {
     ) {
       self.url = url
       self.customProtocols = customProtocols
+      self.devtools = devtools
       self.isChild = isChild
       self.x = x
       self.y = y
@@ -1576,6 +1587,7 @@ public extension VeloxRuntimeWry {
         var native = VeloxWebviewConfig(
           url: urlPointer,
           custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0),
+          devtools: configuration.devtools,
           is_child: configuration.isChild,
           x: configuration.x,
           y: configuration.y,

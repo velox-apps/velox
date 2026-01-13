@@ -196,9 +196,11 @@ public extension VeloxRuntimeWry.Window {
     from config: WindowConfig,
     customProtocols: [VeloxRuntimeWry.CustomProtocol] = []
   ) -> VeloxRuntimeWry.Webview? {
+    let devtoolsEnabled = config.devtools ?? VeloxRuntimeWry.defaultDevtoolsEnabled
     let webviewConfig = VeloxRuntimeWry.WebviewConfiguration(
       url: config.url ?? "",
       customProtocols: customProtocols,
+      devtools: devtoolsEnabled,
       isChild: config.isChild ?? false,
       x: config.x ?? 0,
       y: config.y ?? 0,

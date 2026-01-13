@@ -327,10 +327,11 @@ pub struct VeloxWindowConfig {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct VeloxWebviewConfig {
     pub url: *const c_char,
     pub custom_protocols: VeloxCustomProtocolList,
+    pub devtools: bool,
     /// If true, create as a child webview with bounds
     pub is_child: bool,
     /// X position for child webview (logical pixels)
@@ -341,6 +342,24 @@ pub struct VeloxWebviewConfig {
     pub width: f64,
     /// Height for child webview (logical pixels)
     pub height: f64,
+}
+
+impl Default for VeloxWebviewConfig {
+    fn default() -> Self {
+        Self {
+            url: ptr::null(),
+            custom_protocols: VeloxCustomProtocolList {
+                protocols: ptr::null(),
+                count: 0,
+            },
+            devtools: cfg!(debug_assertions),
+            is_child: false,
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        }
+    }
 }
 
 #[repr(C)]
@@ -1055,7 +1074,7 @@ pub extern "C" fn velox_runtime_wry_library_name() -> *const c_char {
     cached_cstring(&LIBRARY_NAME, || "VeloxRuntimeWry".to_string())
 }
 
-const VELOX_RUNTIME_WRY_FFI_ABI_VERSION: u32 = 1;
+const VELOX_RUNTIME_WRY_FFI_ABI_VERSION: u32 = 2;
 
 #[no_mangle]
 pub extern "C" fn velox_runtime_wry_ffi_abi_version() -> u32 {
@@ -2675,6 +2694,8 @@ pub extern "C" fn velox_webview_build(
         if let Some(url) = url.as_ref() {
             builder = builder.with_url(url.clone());
         }
+
+        builder = builder.with_devtools(cfg.devtools);
 
         for (scheme, handler, user_data) in ffi_protocols.iter().cloned() {
             builder = builder.with_asynchronous_custom_protocol(

@@ -70,6 +70,7 @@ The `velox.json` file is the central configuration for your Velox application. I
         "url": "app://localhost/",
         "visible": true,
         "resizable": true,
+        "devtools": true,
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
@@ -94,11 +95,14 @@ The `velox.json` file is the central configuration for your Velox application. I
 | `url` | String | `app://localhost/` | URL to load in the webview |
 | `visible` | Boolean | `true` | Whether window starts visible |
 | `resizable` | Boolean | `true` | Whether window can be resized |
+| `devtools` | Boolean | Debug: `true`, Release: `false` | Enable WebView devtools (inspector) |
 | `fullscreen` | Boolean | `false` | Whether to start in fullscreen |
 | `decorations` | Boolean | `true` | Show window chrome (title bar, borders) |
 | `transparent` | Boolean | `false` | Enable transparent background |
 | `alwaysOnTop` | Boolean | `false` | Keep window above others |
 | `create` | Boolean | `true` | Create window on app start |
+
+On macOS, enabling devtools uses private WebKit APIs, so avoid setting `devtools: true` in release builds.
 
 #### macOS Configuration
 

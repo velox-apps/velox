@@ -534,6 +534,7 @@ Velox supports a configuration file (`velox.json`) similar to Tauri's `tauri.con
         "create": true,
         "visible": true,
         "resizable": true,
+        "devtools": true,
         "customProtocols": ["app", "ipc"]
       }
     ],
@@ -546,6 +547,8 @@ Velox supports a configuration file (`velox.json`) similar to Tauri's `tauri.con
   }
 }
 ```
+
+**Devtools**: `devtools` defaults to `true` in debug builds and `false` in release. On macOS, enabling devtools uses private WebKit APIs, so avoid setting it to `true` for release builds.
 
 Use `VeloxAppBuilder` to create your app from configuration:
 
