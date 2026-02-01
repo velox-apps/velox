@@ -779,3 +779,16 @@ wry = { path = "../wry" }
 - Local `tao` version must match crates.io (currently 0.34.5)
 - Local `tao` must have `velox-testing` in its default features in `Cargo.toml`
 - Local `wry` version must match crates.io (currently 0.53.5)
+
+## License
+
+Velox is licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Velox by you shall be dual licensed as above, without any additional terms or conditions.
