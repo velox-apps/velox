@@ -157,6 +157,12 @@ public enum VeloxRuntimeWry {
     public var height: UInt32
     /// The window title displayed in the title bar.
     public var title: String
+    /// Whether the window should display a shadow.
+    public var shadow: Bool?
+    /// macOS title bar style.
+    public var titleBarStyle: TitleBarStyle?
+    /// Whether to hide the window title text on macOS.
+    public var hiddenTitle: Bool?
 
     /// Creates a window configuration.
     ///
@@ -164,10 +170,20 @@ public enum VeloxRuntimeWry {
     ///   - width: Initial width in logical pixels (default: 0 for system default).
     ///   - height: Initial height in logical pixels (default: 0 for system default).
     ///   - title: The window title (default: empty string).
-    public init(width: UInt32 = 0, height: UInt32 = 0, title: String = "") {
+    public init(
+      width: UInt32 = 0,
+      height: UInt32 = 0,
+      title: String = "",
+      shadow: Bool? = nil,
+      titleBarStyle: TitleBarStyle? = nil,
+      hiddenTitle: Bool? = nil
+    ) {
       self.width = width
       self.height = height
       self.title = title
+      self.shadow = shadow
+      self.titleBarStyle = titleBarStyle
+      self.hiddenTitle = hiddenTitle
     }
   }
 
@@ -300,6 +316,20 @@ public enum VeloxRuntimeWry {
     public var width: Double
     /// Height for child webview (logical pixels).
     public var height: Double
+    /// Whether clicking an inactive window also clicks through to the webview (macOS).
+    public var acceptFirstMouse: Bool?
+    /// Custom webview data storage path.
+    public var dataDirectory: String?
+    /// Enable private browsing mode for the webview.
+    public var incognito: Bool?
+    /// Disable JavaScript execution in the webview.
+    public var javascriptDisabled: Bool?
+    /// Native scrollbar style (Windows only).
+    public var scrollBarStyle: ScrollBarStyle?
+    /// Webview proxy URL (http://host:port or socks5://host:port).
+    public var proxyUrl: String?
+    /// Webview background throttling policy.
+    public var backgroundThrottling: BackgroundThrottlingPolicy?
 
     public init(
       url: String = "",
@@ -309,7 +339,14 @@ public enum VeloxRuntimeWry {
       x: Double = 0,
       y: Double = 0,
       width: Double = 0,
-      height: Double = 0
+      height: Double = 0,
+      acceptFirstMouse: Bool? = nil,
+      dataDirectory: String? = nil,
+      incognito: Bool? = nil,
+      javascriptDisabled: Bool? = nil,
+      scrollBarStyle: ScrollBarStyle? = nil,
+      proxyUrl: String? = nil,
+      backgroundThrottling: BackgroundThrottlingPolicy? = nil
     ) {
       self.url = url
       self.customProtocols = customProtocols
@@ -319,6 +356,13 @@ public enum VeloxRuntimeWry {
       self.y = y
       self.width = width
       self.height = height
+      self.acceptFirstMouse = acceptFirstMouse
+      self.dataDirectory = dataDirectory
+      self.incognito = incognito
+      self.javascriptDisabled = javascriptDisabled
+      self.scrollBarStyle = scrollBarStyle
+      self.proxyUrl = proxyUrl
+      self.backgroundThrottling = backgroundThrottling
     }
   }
 
@@ -1347,14 +1391,27 @@ public extension VeloxRuntimeWry {
     }
 
     /// Convenience to build a Tao window using the underlying event loop.
-    public func makeWindow(configuration: WindowConfiguration? = nil) -> Window? {
+    public func makeWindow(configuration: WindowConfiguration? = nil, parent: Window? = nil) -> Window? {
       guard let raw else {
         return nil
       }
 
       if let configuration {
         return withOptionalCString(configuration.title) { titlePointer in
-          var native = VeloxWindowConfig(width: configuration.width, height: configuration.height, title: titlePointer)
+          let titlebarFlags = titleBarFlags(
+            style: configuration.titleBarStyle,
+            hiddenTitle: configuration.hiddenTitle
+          )
+          var native = VeloxWindowConfig(
+            width: configuration.width,
+            height: configuration.height,
+            title: titlePointer,
+            parent: parent?.rawPointer,
+            has_shadow: optionalBoolFlag(configuration.shadow),
+            titlebar_transparent: titlebarFlags.transparent,
+            titlebar_hidden: titlebarFlags.hidden,
+            titlebar_buttons_hidden: titlebarFlags.buttonsHidden
+          )
           return withUnsafePointer(to: &native) { pointer in
             guard let handle = velox_window_build(raw, pointer) else {
               return nil
@@ -1593,34 +1650,45 @@ public extension VeloxRuntimeWry {
       }
 
       return withOptionalCString(configuration.url) { urlPointer in
-        var native = VeloxWebviewConfig(
-          url: urlPointer,
-          custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0),
-          devtools: configuration.devtools,
-          is_child: configuration.isChild,
-          x: configuration.x,
-          y: configuration.y,
-          width: configuration.width,
-          height: configuration.height
-        )
-
-        return definitions.withUnsafeBufferPointer { buffer in
-          if let baseAddress = buffer.baseAddress, buffer.count > 0 {
-            native.custom_protocols = VeloxCustomProtocolList(
-              protocols: baseAddress,
-              count: buffer.count
+        return withOptionalCString(configuration.proxyUrl ?? "") { proxyPointer in
+          return withOptionalCString(configuration.dataDirectory ?? "") { dataDirectoryPointer in
+            var native = VeloxWebviewConfig(
+              url: urlPointer,
+              custom_protocols: VeloxCustomProtocolList(protocols: nil, count: 0),
+              devtools: configuration.devtools,
+              is_child: configuration.isChild,
+              x: configuration.x,
+              y: configuration.y,
+              width: configuration.width,
+              height: configuration.height,
+              accept_first_mouse: optionalBoolFlag(configuration.acceptFirstMouse),
+              incognito: optionalBoolFlag(configuration.incognito),
+              javascript_disabled: optionalBoolFlag(configuration.javascriptDisabled),
+              background_throttling: backgroundThrottlingFlag(configuration.backgroundThrottling),
+              scroll_bar_style: scrollBarStyleFlag(configuration.scrollBarStyle),
+              proxy_url: proxyPointer,
+              data_directory: dataDirectoryPointer
             )
-          }
 
-          return withUnsafePointer(to: native) { pointer in
-            guard let handle = velox_webview_build(raw, pointer) else {
-              return nil
+            return definitions.withUnsafeBufferPointer { buffer in
+              if let baseAddress = buffer.baseAddress, buffer.count > 0 {
+                native.custom_protocols = VeloxCustomProtocolList(
+                  protocols: baseAddress,
+                  count: buffer.count
+                )
+              }
+
+              return withUnsafePointer(to: native) { pointer in
+                guard let handle = velox_webview_build(raw, pointer) else {
+                  return nil
+                }
+                guard let webview = Webview(raw: handle) else {
+                  return nil
+                }
+                webview.installCustomProtocolHandlers(handlerBoxes)
+                return register(webview: webview)
+              }
             }
-            guard let webview = Webview(raw: handle) else {
-              return nil
-            }
-            webview.installCustomProtocolHandlers(handlerBoxes)
-            return register(webview: webview)
           }
         }
       }
@@ -1664,6 +1732,11 @@ public extension VeloxRuntimeWry {
     @discardableResult
     public func setDecorations(_ decorations: Bool) -> Bool {
       velox_window_set_decorations(raw, decorations)
+    }
+
+    @discardableResult
+    public func setShadow(_ shadow: Bool) -> Bool {
+      velox_window_set_shadow(raw, shadow)
     }
 
     @discardableResult
@@ -3913,6 +3986,76 @@ private func string(from pointer: UnsafePointer<CChar>?) -> String {
     return ""
   }
   return String(cString: pointer)
+}
+
+private func optionalBoolFlag(_ value: Bool?) -> Int8 {
+  switch value {
+  case .none:
+    return -1
+  case .some(false):
+    return 0
+  case .some(true):
+    return 1
+  }
+}
+
+private func backgroundThrottlingFlag(_ value: BackgroundThrottlingPolicy?) -> Int32 {
+  switch value {
+  case .none:
+    return -1
+  case .some(.disabled):
+    return 0
+  case .some(.suspend):
+    return 1
+  case .some(.throttle):
+    return 2
+  }
+}
+
+private func scrollBarStyleFlag(_ value: ScrollBarStyle?) -> Int32 {
+  switch value {
+  case .none:
+    return -1
+  case .some(.`default`):
+    return 0
+  case .some(.overlay):
+    return 1
+  }
+}
+
+private struct TitlebarFlags {
+  let transparent: Int8
+  let hidden: Int8
+  let buttonsHidden: Int8
+}
+
+private func titleBarFlags(style: TitleBarStyle?, hiddenTitle: Bool?) -> TitlebarFlags {
+  var transparent: Bool?
+  var hidden: Bool?
+  var buttonsHidden: Bool?
+
+  if let style {
+    switch style {
+    case .visible:
+      transparent = false
+      hidden = false
+    case .transparent:
+      transparent = true
+    case .overlay:
+      transparent = true
+      hidden = true
+    }
+  }
+
+  if hiddenTitle == true, transparent == nil {
+    transparent = true
+  }
+
+  return TitlebarFlags(
+    transparent: optionalBoolFlag(transparent),
+    hidden: optionalBoolFlag(hidden),
+    buttonsHidden: optionalBoolFlag(buttonsHidden)
+  )
 }
 
 private func withOptionalCString<R>(

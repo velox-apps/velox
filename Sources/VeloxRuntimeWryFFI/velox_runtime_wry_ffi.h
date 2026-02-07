@@ -90,6 +90,11 @@ typedef struct {
   uint32_t width;
   uint32_t height;
   const char *title;
+  VeloxWindowHandle *parent;
+  int8_t has_shadow;
+  int8_t titlebar_transparent;
+  int8_t titlebar_hidden;
+  int8_t titlebar_buttons_hidden;
 } VeloxWindowConfig;
 
 typedef struct {
@@ -233,6 +238,17 @@ typedef struct VeloxCustomProtocolList {
   size_t count;
 } VeloxCustomProtocolList;
 
+typedef enum {
+  VELOX_BACKGROUND_THROTTLING_DISABLED = 0,
+  VELOX_BACKGROUND_THROTTLING_SUSPEND = 1,
+  VELOX_BACKGROUND_THROTTLING_THROTTLE = 2,
+} VeloxBackgroundThrottlingPolicy;
+
+typedef enum {
+  VELOX_SCROLL_BAR_STYLE_DEFAULT = 0,
+  VELOX_SCROLL_BAR_STYLE_FLUENT_OVERLAY = 1,
+} VeloxScrollBarStyle;
+
 typedef struct {
   const char *url;
   VeloxCustomProtocolList custom_protocols;
@@ -247,6 +263,20 @@ typedef struct {
   double width;
   /// Height for child webview (logical pixels)
   double height;
+  /// Whether clicking an inactive window also clicks through to the webview (macOS)
+  int8_t accept_first_mouse;
+  /// Enable private browsing mode for the webview
+  int8_t incognito;
+  /// Disable JavaScript execution in the webview
+  int8_t javascript_disabled;
+  /// Background throttling policy (-1 means unset)
+  int32_t background_throttling;
+  /// Scrollbar style (Windows only; -1 means unset)
+  int32_t scroll_bar_style;
+  /// Proxy URL (http://host:port or socks5://host:port)
+  const char *proxy_url;
+  /// Custom data directory for the webview context
+  const char *data_directory;
 } VeloxWebviewConfig;
 
 typedef struct {
@@ -312,6 +342,7 @@ const char *velox_window_identifier(VeloxWindowHandle *window);
 bool velox_window_set_title(VeloxWindowHandle *window, const char *title);
 bool velox_window_set_fullscreen(VeloxWindowHandle *window, bool fullscreen);
 bool velox_window_set_decorations(VeloxWindowHandle *window, bool decorations);
+bool velox_window_set_shadow(VeloxWindowHandle *window, bool shadow);
 bool velox_window_set_resizable(VeloxWindowHandle *window, bool resizable);
 bool velox_window_set_always_on_top(VeloxWindowHandle *window, bool on_top);
 bool velox_window_set_always_on_bottom(VeloxWindowHandle *window, bool on_bottom);

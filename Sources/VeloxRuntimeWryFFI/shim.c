@@ -44,6 +44,7 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_window_set_title;
   (void)velox_window_set_fullscreen;
   (void)velox_window_set_decorations;
+  (void)velox_window_set_shadow;
   (void)velox_window_set_resizable;
   (void)velox_window_set_always_on_top;
   (void)velox_window_set_always_on_bottom;

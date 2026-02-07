@@ -9,14 +9,17 @@ import VeloxRuntime
 
 public extension VeloxRuntimeWry.EventLoop {
   /// Create a window from a WindowConfig
-  func makeWindow(from config: WindowConfig) -> VeloxRuntimeWry.Window? {
+  func makeWindow(from config: WindowConfig, parent: VeloxRuntimeWry.Window? = nil) -> VeloxRuntimeWry.Window? {
     let windowConfig = VeloxRuntimeWry.WindowConfiguration(
       width: UInt32(config.effectiveWidth),
       height: UInt32(config.effectiveHeight),
-      title: config.effectiveTitle
+      title: config.effectiveTitle,
+      shadow: config.shadow,
+      titleBarStyle: config.titleBarStyle,
+      hiddenTitle: config.hiddenTitle
     )
 
-    guard let window = makeWindow(configuration: windowConfig) else {
+    guard let window = makeWindow(configuration: windowConfig, parent: parent) else {
       return nil
     }
 
@@ -50,7 +53,8 @@ public extension VeloxRuntimeWry.EventLoop {
 
     // Create windows marked with create: true
     for windowConfig in config.app.windows where windowConfig.shouldCreate {
-      if let window = makeWindow(from: windowConfig) {
+      let parentWindow = windowConfig.parent.flatMap { windows[$0] }
+      if let window = makeWindow(from: windowConfig, parent: parentWindow) {
         windows[windowConfig.label] = window
       }
     }
@@ -62,7 +66,20 @@ public extension VeloxRuntimeWry.EventLoop {
   private func applyWindowConfig(_ config: WindowConfig, to window: VeloxRuntimeWry.Window) {
     // Position
     if let x = config.x, let y = config.y {
-      window.setPosition(x: x, y: y)
+      var targetX = x
+      var targetY = y
+      if config.preventOverflow == true {
+        if let monitor = window.currentMonitor() ?? window.primaryMonitor() {
+          let size = window.outerSize() ?? VeloxRuntimeWry.WindowSize(width: config.effectiveWidth, height: config.effectiveHeight)
+          let minX = monitor.position.x
+          let minY = monitor.position.y
+          let maxX = minX + monitor.size.width - size.width
+          let maxY = minY + monitor.size.height - size.height
+          targetX = min(max(targetX, minX), maxX)
+          targetY = min(max(targetY, minY), maxY)
+        }
+      }
+      window.setPosition(x: targetX, y: targetY)
     }
 
     // Size constraints
@@ -79,6 +96,9 @@ public extension VeloxRuntimeWry.EventLoop {
     }
     if let decorations = config.decorations {
       window.setDecorations(decorations)
+    }
+    if let shadow = config.shadow {
+      window.setShadow(shadow)
     }
     if let maximized = config.maximized, maximized {
       window.setMaximized(true)
@@ -205,7 +225,14 @@ public extension VeloxRuntimeWry.Window {
       x: config.x ?? 0,
       y: config.y ?? 0,
       width: config.effectiveWidth,
-      height: config.effectiveHeight
+      height: config.effectiveHeight,
+      acceptFirstMouse: config.acceptFirstMouse,
+      dataDirectory: config.dataDirectory,
+      incognito: config.incognito,
+      javascriptDisabled: config.javascriptDisabled,
+      scrollBarStyle: config.scrollBarStyle,
+      proxyUrl: config.proxyUrl,
+      backgroundThrottling: config.backgroundThrottling
     )
 
     return makeWebview(configuration: webviewConfig)

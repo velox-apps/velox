@@ -135,6 +135,18 @@ public struct WindowConfig: Codable, Sendable {
   /// Whether the window has decorations (title bar, etc.)
   public var decorations: Bool?
 
+  /// Parent window label for modal/child windows
+  public var parent: String?
+
+  /// Whether the window should display a shadow
+  public var shadow: Bool?
+
+  /// macOS title bar style
+  public var titleBarStyle: TitleBarStyle?
+
+  /// Hide the window title text on macOS
+  public var hiddenTitle: Bool?
+
   /// Whether the window starts maximized
   public var maximized: Bool?
 
@@ -161,6 +173,9 @@ public struct WindowConfig: Codable, Sendable {
 
   /// Whether the window is transparent
   public var transparent: Bool?
+
+  /// Prevent the window from moving outside the available work area
+  public var preventOverflow: Bool?
 
   /// Whether the window can be maximized
   public var maximizable: Bool?
@@ -191,6 +206,27 @@ public struct WindowConfig: Codable, Sendable {
 
   /// Whether dev tools are enabled
   public var devtools: Bool?
+
+  /// Whether clicking an inactive window also clicks through to the webview (macOS)
+  public var acceptFirstMouse: Bool?
+
+  /// Custom webview data storage path
+  public var dataDirectory: String?
+
+  /// Enable private browsing mode for the webview
+  public var incognito: Bool?
+
+  /// Disable JavaScript execution in the webview
+  public var javascriptDisabled: Bool?
+
+  /// Native scrollbar style (Windows only)
+  public var scrollBarStyle: ScrollBarStyle?
+
+  /// Webview proxy URL (http://host:port or socks5://host:port)
+  public var proxyUrl: String?
+
+  /// Webview background throttling policy
+  public var backgroundThrottling: BackgroundThrottlingPolicy?
 
   /// Whether zoom hotkeys are enabled
   public var zoomHotkeysEnabled: Bool?
@@ -226,6 +262,26 @@ public enum WindowTheme: String, Codable, Sendable {
   case light
   case dark
   case system
+}
+
+/// macOS title bar styles
+public enum TitleBarStyle: String, Codable, Sendable {
+  case visible
+  case transparent
+  case overlay
+}
+
+/// Webview scrollbar styles (Windows only)
+public enum ScrollBarStyle: String, Codable, Sendable {
+  case `default` = "default"
+  case overlay
+}
+
+/// Webview background throttling policies
+public enum BackgroundThrottlingPolicy: String, Codable, Sendable {
+  case disabled
+  case suspend
+  case throttle
 }
 
 // MARK: - Security Configuration

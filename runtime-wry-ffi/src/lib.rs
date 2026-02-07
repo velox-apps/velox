@@ -1,12 +1,14 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::PathBuf;
 use std::ptr;
 #[cfg(target_os = "macos")]
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::{cell::RefCell, thread::LocalKey};
 
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 #[cfg(target_os = "macos")]
 use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
@@ -38,15 +40,24 @@ use tao::{
 
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 #[cfg(target_os = "macos")]
-use tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS, WindowExtMacOS};
+use tao::platform::macos::{
+    ActivationPolicy, EventLoopWindowTargetExtMacOS, WindowBuilderExtMacOS, WindowExtMacOS,
+};
+#[cfg(target_os = "windows")]
+use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
 use url::Url;
 use wry::{
     http::{
         header::{HeaderName, HeaderValue, CONTENT_TYPE},
         Response as WryHttpResponse, StatusCode,
     },
-    Rect, WebView, WebViewBuilder,
+    BackgroundThrottlingPolicy, ProxyConfig, ProxyEndpoint, Rect, WebContext, WebView,
+    WebViewBuilder,
 };
+#[cfg(target_os = "windows")]
+use wry::ScrollBarStyle;
 
 static LIBRARY_NAME: OnceLock<CString> = OnceLock::new();
 static RUNTIME_VERSION: OnceLock<CString> = OnceLock::new();
@@ -83,6 +94,8 @@ pub struct VeloxWindowHandle {
 
 pub struct VeloxWebviewHandle {
     webview: WebView,
+    #[allow(dead_code)]
+    context: Option<WebContext>,
 }
 
 #[repr(C)]
@@ -345,11 +358,31 @@ pub enum VeloxEventLoopControlFlow {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct VeloxWindowConfig {
     pub width: u32,
     pub height: u32,
     pub title: *const c_char,
+    pub parent: *mut VeloxWindowHandle,
+    pub has_shadow: i8,
+    pub titlebar_transparent: i8,
+    pub titlebar_hidden: i8,
+    pub titlebar_buttons_hidden: i8,
+}
+
+impl Default for VeloxWindowConfig {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            title: ptr::null(),
+            parent: ptr::null_mut(),
+            has_shadow: -1,
+            titlebar_transparent: -1,
+            titlebar_hidden: -1,
+            titlebar_buttons_hidden: -1,
+        }
+    }
 }
 
 #[repr(C)]
@@ -368,6 +401,20 @@ pub struct VeloxWebviewConfig {
     pub width: f64,
     /// Height for child webview (logical pixels)
     pub height: f64,
+    /// Whether clicking an inactive window also clicks through to the webview (macOS)
+    pub accept_first_mouse: i8,
+    /// Enable private browsing mode for the webview
+    pub incognito: i8,
+    /// Disable JavaScript execution in the webview
+    pub javascript_disabled: i8,
+    /// Background throttling policy (-1 means unset)
+    pub background_throttling: i32,
+    /// Scrollbar style (Windows only; -1 means unset)
+    pub scroll_bar_style: i32,
+    /// Proxy URL (http://host:port or socks5://host:port)
+    pub proxy_url: *const c_char,
+    /// Custom data directory for the webview context
+    pub data_directory: *const c_char,
 }
 
 impl Default for VeloxWebviewConfig {
@@ -384,6 +431,13 @@ impl Default for VeloxWebviewConfig {
             y: 0.0,
             width: 0.0,
             height: 0.0,
+            accept_first_mouse: -1,
+            incognito: -1,
+            javascript_disabled: -1,
+            background_throttling: -1,
+            scroll_bar_style: -1,
+            proxy_url: ptr::null(),
+            data_directory: ptr::null(),
         }
     }
 }
@@ -632,6 +686,67 @@ fn opt_cstring(ptr: *const c_char) -> Option<String> {
     } else {
         unsafe { CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_owned()) }
     }
+}
+
+fn opt_bool(flag: i8) -> Option<bool> {
+    match flag {
+        -1 => None,
+        0 => Some(false),
+        _ => Some(true),
+    }
+}
+
+fn background_throttling_from_flag(flag: i32) -> Option<BackgroundThrottlingPolicy> {
+    match flag {
+        -1 => None,
+        0 => Some(BackgroundThrottlingPolicy::Disabled),
+        1 => Some(BackgroundThrottlingPolicy::Suspend),
+        2 => Some(BackgroundThrottlingPolicy::Throttle),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn scroll_bar_style_from_flag(flag: i32) -> Option<ScrollBarStyle> {
+    match flag {
+        -1 => None,
+        0 => Some(ScrollBarStyle::Default),
+        1 => Some(ScrollBarStyle::FluentOverlay),
+        _ => None,
+    }
+}
+
+fn parse_proxy_config(proxy_url: Option<String>) -> Option<ProxyConfig> {
+    let url = proxy_url?;
+    let parsed = Url::parse(&url).ok()?;
+    let host = parsed.host_str()?.to_string();
+    let port = parsed.port()?.to_string();
+    let endpoint = ProxyEndpoint { host, port };
+    match parsed.scheme() {
+        "http" | "https" => Some(ProxyConfig::Http(endpoint)),
+        "socks5" | "socks5h" => Some(ProxyConfig::Socks5(endpoint)),
+        _ => None,
+    }
+}
+
+fn apply_parent_builder(builder: TaoWindowBuilder, parent: &Window) -> TaoWindowBuilder {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(handle) = parent.window_handle() {
+            if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
+                return builder.with_parent_window(appkit.ns_window.as_ptr() as *mut c_void);
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(handle) = parent.window_handle() {
+            if let RawWindowHandle::Win32(win32) = handle.as_raw() {
+                return builder.with_parent_window(HWND(win32.hwnd.get() as isize));
+            }
+        }
+    }
+    builder
 }
 
 fn opt_color(color: *const VeloxColor) -> Option<(u8, u8, u8, u8)> {
@@ -2991,6 +3106,34 @@ pub extern "C" fn velox_window_build(
             builder = builder.with_title(title);
         }
 
+        if let Some(parent) = unsafe { cfg.parent.as_ref() } {
+            builder = apply_parent_builder(builder, &parent.window);
+        }
+
+        if let Some(shadow) = opt_bool(cfg.has_shadow) {
+            #[cfg(target_os = "macos")]
+            {
+                builder = builder.with_has_shadow(shadow);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                builder = builder.with_undecorated_shadow(shadow);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(transparent) = opt_bool(cfg.titlebar_transparent) {
+                builder = builder.with_titlebar_transparent(transparent);
+            }
+            if let Some(hidden) = opt_bool(cfg.titlebar_hidden) {
+                builder = builder.with_titlebar_hidden(hidden);
+            }
+            if let Some(hidden_buttons) = opt_bool(cfg.titlebar_buttons_hidden) {
+                builder = builder.with_titlebar_buttons_hidden(hidden_buttons);
+            }
+        }
+
         if cfg.width > 0 && cfg.height > 0 {
             builder =
                 builder.with_inner_size(LogicalSize::new(cfg.width as f64, cfg.height as f64));
@@ -3066,6 +3209,25 @@ pub extern "C" fn velox_window_set_decorations(
     with_window(window, |w| {
         w.set_decorations(decorations);
         true
+    })
+    .unwrap_or(false)
+}
+
+#[no_mangle]
+pub extern "C" fn velox_window_set_shadow(window: *mut VeloxWindowHandle, shadow: bool) -> bool {
+    with_window(window, |w| {
+        #[cfg(target_os = "macos")]
+        {
+            w.set_has_shadow(shadow);
+            return true;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            w.set_undecorated_shadow(shadow);
+            return true;
+        }
+        #[allow(unreachable_code)]
+        false
     })
     .unwrap_or(false)
 }
@@ -3682,6 +3844,8 @@ pub extern "C" fn velox_webview_build(
 
     let cfg = unsafe { config.as_ref().copied().unwrap_or_default() };
     let url = opt_cstring(cfg.url);
+    let proxy_url = opt_cstring(cfg.proxy_url);
+    let data_directory = opt_cstring(cfg.data_directory);
 
     let ffi_protocols: Vec<(
         String,
@@ -3707,13 +3871,45 @@ pub extern "C" fn velox_webview_build(
     };
 
     with_window(window, |w| {
-        let mut builder = WebViewBuilder::new();
+        let mut web_context = data_directory
+            .as_ref()
+            .map(|path| WebContext::new(Some(PathBuf::from(path))));
+        let mut builder = if let Some(context) = web_context.as_mut() {
+            WebViewBuilder::new_with_web_context(context)
+        } else {
+            WebViewBuilder::new()
+        };
 
         if let Some(url) = url.as_ref() {
             builder = builder.with_url(url.clone());
         }
 
         builder = builder.with_devtools(cfg.devtools);
+
+        if let Some(accept_first_mouse) = opt_bool(cfg.accept_first_mouse) {
+            builder = builder.with_accept_first_mouse(accept_first_mouse);
+        }
+
+        if let Some(incognito) = opt_bool(cfg.incognito) {
+            builder = builder.with_incognito(incognito);
+        }
+
+        if opt_bool(cfg.javascript_disabled).unwrap_or(false) {
+            builder = builder.with_javascript_disabled();
+        }
+
+        if let Some(policy) = background_throttling_from_flag(cfg.background_throttling) {
+            builder = builder.with_background_throttling(policy);
+        }
+
+        if let Some(proxy_config) = parse_proxy_config(proxy_url) {
+            builder = builder.with_proxy_config(proxy_config);
+        }
+
+        #[cfg(target_os = "windows")]
+        if let Some(style) = scroll_bar_style_from_flag(cfg.scroll_bar_style) {
+            builder = builder.with_scroll_bar_style(style);
+        }
 
         for (scheme, handler, user_data) in ffi_protocols.iter().cloned() {
             builder = builder.with_asynchronous_custom_protocol(
@@ -3899,12 +4095,22 @@ pub extern "C" fn velox_webview_build(
             builder
                 .build_as_child(w)
                 .ok()
-                .map(|webview| Box::into_raw(Box::new(VeloxWebviewHandle { webview })))
+                .map(|webview| {
+                    Box::into_raw(Box::new(VeloxWebviewHandle {
+                        webview,
+                        context: web_context,
+                    }))
+                })
         } else {
             builder
                 .build(w)
                 .ok()
-                .map(|webview| Box::into_raw(Box::new(VeloxWebviewHandle { webview })))
+                .map(|webview| {
+                    Box::into_raw(Box::new(VeloxWebviewHandle {
+                        webview,
+                        context: web_context,
+                    }))
+                })
         }
     })
     .flatten()
