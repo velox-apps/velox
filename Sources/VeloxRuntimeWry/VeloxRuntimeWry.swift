@@ -1488,7 +1488,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// Handle wrapper mirroring Tao's `Window`.
-  public final class Window {
+  final class Window {
     fileprivate let raw: UnsafeMutablePointer<VeloxWindowHandle>
     private weak var owner: Runtime?
 
@@ -2800,7 +2800,7 @@ public final class MenuEventMonitor: @unchecked Sendable {
 }
 
 public extension VeloxRuntimeWry {
-  public final class MenuBar: @unchecked Sendable {
+  final class MenuBar: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxMenuBarHandle>
     private var retainedItems: [AnyObject] = []
 
@@ -3017,7 +3017,7 @@ public extension VeloxRuntimeWry {
     }
   }
 
-  public final class Submenu: @unchecked Sendable {
+  final class Submenu: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxSubmenuHandle>
     private var retainedItems: [AnyObject] = []
 
@@ -3307,7 +3307,7 @@ public extension VeloxRuntimeWry {
     }
   }
 
-  public final class MenuItem: @unchecked Sendable {
+  final class MenuItem: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxMenuItemHandle>
     public let identifier: String
 
@@ -3388,7 +3388,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// A separator menu item that displays a horizontal line in a menu
-  public final class MenuSeparator: @unchecked Sendable {
+  final class MenuSeparator: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxSeparatorHandle>
     public let identifier: String
 
@@ -3411,7 +3411,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// A menu item with a checkmark that can be toggled
-  public final class CheckMenuItem: @unchecked Sendable {
+  final class CheckMenuItem: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxCheckMenuItemHandle>
     public let identifier: String
 
@@ -3507,7 +3507,7 @@ public extension VeloxRuntimeWry {
     }
   }
 
-  public final class IconMenuItem: @unchecked Sendable {
+  final class IconMenuItem: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxIconMenuItemHandle>
     public let identifier: String
 
@@ -3600,7 +3600,7 @@ public extension VeloxRuntimeWry {
     }
   }
 
-  public final class PredefinedMenuItem: @unchecked Sendable {
+  final class PredefinedMenuItem: @unchecked Sendable {
     public enum Item: String, Sendable {
       case separator = "Separator"
       case copy = "Copy"

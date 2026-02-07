@@ -200,14 +200,10 @@ let package = Package(
         .unsafeFlags([
           "-L",
           ".build/plugins/outputs/velox/VeloxRuntimeWryFFI/destination/VeloxRustBuildPlugin/Artifacts/cargo-target/debug",
-          "-L",
-          "runtime-wry-ffi/target/debug",
         ], .when(configuration: .debug)),
         .unsafeFlags([
           "-L",
           ".build/plugins/outputs/velox/VeloxRuntimeWryFFI/destination/VeloxRustBuildPlugin/Artifacts/cargo-target/release",
-          "-L",
-          "runtime-wry-ffi/target/release",
         ], .when(configuration: .release)),
         .linkedLibrary("velox_runtime_wry_ffi")
       ]
@@ -267,7 +263,9 @@ let package = Package(
         "VeloxPluginShell",
         "VeloxPluginOS",
         "VeloxPluginProcess",
-        "VeloxPluginOpener"
+        "VeloxPluginOpener",
+        "VeloxPluginResources",
+        "VeloxPluginMenu"
       ],
       path: "Sources/VeloxPlugins"
     ),

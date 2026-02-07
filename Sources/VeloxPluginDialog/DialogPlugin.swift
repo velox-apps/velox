@@ -50,17 +50,21 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
     let commands = context.commands(for: name)
 
     #if canImport(AppKit)
-    // Use native AppKit dialogs with runModal for proper event loop handling
-    commands.register("open", args: OpenArgs.self, returning: [String]?.self) { args, _ in
-      Self.runModalDeferred {
-        Self.showOpenPanel(args: args)
+    // Use deferred responses to avoid blocking the main run loop.
+    commands.register("open", args: OpenArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.main.async {
+        Self.showOpenPanel(args: args, responder: deferred.responder)
       }
+      return deferred.pending
     }
 
-    commands.register("save", args: SaveArgs.self, returning: String?.self) { args, _ in
-      Self.runModalDeferred {
-        Self.showSavePanel(args: args)
+    commands.register("save", args: SaveArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.main.async {
+        Self.showSavePanel(args: args, responder: deferred.responder)
       }
+      return deferred.pending
     }
 
     // Alert dialogs (message, ask, confirm) return a deferred response so the
@@ -94,44 +98,11 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
     #endif
   }
 
-  /// Run a modal dialog operation deferred to escape WebKit callback conflicts
-  private static func runModalDeferred<T>(_ operation: @escaping () -> T) -> T {
-    var result: T?
-    var completed = false
-
-    // Use CFRunLoopPerformBlock to schedule the operation
-    CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
-      NSApp.activate(ignoringOtherApps: true)
-      result = operation()
-      completed = true
-    }
-
-    // Wake up the run loop to ensure our block gets processed
-    CFRunLoopWakeUp(CFRunLoopGetMain())
-
-    // Process events until the dialog completes
-    while !completed {
-      // Process one event at a time
-      autoreleasepool {
-        if let event = NSApp.nextEvent(
-          matching: .any,
-          until: Date(timeIntervalSinceNow: 0.05),
-          inMode: .default,
-          dequeue: true
-        ) {
-          NSApp.sendEvent(event)
-        }
-      }
-    }
-
-    return result!
-  }
-
   #if canImport(AppKit)
   // MARK: - Native AppKit Dialog Implementations
   // Use begin() with completion handler to avoid runModal() issues
 
-  private static func showOpenPanel(args: OpenArgs) -> [String]? {
+  private static func showOpenPanel(args: OpenArgs, responder: CommandResponder) {
     NSApp.activate(ignoringOtherApps: true)
     let panel = NSOpenPanel()
     panel.title = args.title ?? "Open"
@@ -151,25 +122,17 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
       panel.allowedFileTypes = allowedTypes
     }
 
-    var result: [String]?
-    var done = false
-
     panel.begin { response in
       if response == .OK {
-        result = panel.urls.map { $0.path }
+        let result = panel.urls.map { $0.path }
+        responder.resolve(result)
+      } else {
+        responder.resolve(nil as [String]?)
       }
-      done = true
     }
-
-    // Wait for completion by running modal panel mode
-    while !done {
-      _ = CFRunLoopRunInMode(CFRunLoopMode(RunLoop.Mode.modalPanel.rawValue as CFString), 0.1, true)
-    }
-
-    return result
   }
 
-  private static func showSavePanel(args: SaveArgs) -> String? {
+  private static func showSavePanel(args: SaveArgs, responder: CommandResponder) {
     NSApp.activate(ignoringOtherApps: true)
     let panel = NSSavePanel()
     panel.title = args.title ?? "Save"
@@ -190,22 +153,13 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
       panel.allowedFileTypes = allowedTypes
     }
 
-    var result: String?
-    var done = false
-
     panel.begin { response in
       if response == .OK, let url = panel.url {
-        result = url.path
+        responder.resolve(url.path)
+      } else {
+        responder.resolve(nil as String?)
       }
-      done = true
     }
-
-    // Wait for completion by running modal panel mode
-    while !done {
-      _ = CFRunLoopRunInMode(CFRunLoopMode(RunLoop.Mode.modalPanel.rawValue as CFString), 0.1, true)
-    }
-
-    return result
   }
 
   private static func alertStyle(from kind: String?) -> NSAlert.Style {
