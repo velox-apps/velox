@@ -734,7 +734,7 @@ fn apply_parent_builder(builder: TaoWindowBuilder, parent: &Window) -> TaoWindow
     {
         if let Ok(handle) = parent.window_handle() {
             if let RawWindowHandle::AppKit(appkit) = handle.as_raw() {
-                return builder.with_parent_window(appkit.ns_window.as_ptr() as *mut c_void);
+                return builder.with_parent_window(appkit.ns_view.as_ptr() as *mut c_void);
             }
         }
     }
