@@ -108,6 +108,131 @@ public enum VeloxInvokeBridge {
 
       ensureListener();
 
+      // -------- Tauri-compatible bridge (optional) --------
+      if (!window.__TAURI_INTERNALS__) {
+        // callback registry (transformCallback)
+        var _cbId = 0;
+        var _cbs = {};
+
+        function transformCallback(cb, once) {
+          var id = '__tcb_' + (++_cbId);
+          _cbs[id] = function() {
+            var args = arguments;
+            if (once) delete _cbs[id];
+            if (cb) return cb.apply(null, args);
+          };
+          return id;
+        }
+
+        // event system bridge
+        var _veloxListenerIds = {};
+        var _tauriEventId = 0;
+
+        function tauriListen(event, handlerRef) {
+          var realHandler = (typeof handlerRef === 'function')
+            ? handlerRef
+            : _cbs[handlerRef];
+
+          if (!realHandler) {
+            console.warn('[Velox] No handler found for', handlerRef);
+            return Promise.resolve(0);
+          }
+
+          var eventId = ++_tauriEventId;
+          if (window.Velox && window.Velox.event && window.Velox.event.listen) {
+            var veloxId = window.Velox.event.listen(event, function(veloxEvent) {
+              try {
+                realHandler({
+                  event: veloxEvent.name || event,
+                  payload: veloxEvent.payload,
+                  id: veloxEvent.id || eventId
+                });
+              } catch (e) {
+                console.error('[Velox] Event handler error:', e);
+              }
+            });
+            _veloxListenerIds[eventId] = veloxId;
+          }
+
+          return Promise.resolve(eventId);
+        }
+
+        function tauriUnlisten(event, eventId) {
+          var veloxId = _veloxListenerIds[eventId];
+          if (veloxId != null && window.Velox && window.Velox.event) {
+            window.Velox.event.unlisten(veloxId);
+          }
+          delete _veloxListenerIds[eventId];
+        }
+
+        function tauriEmit(event, payload) {
+          if (window.Velox && window.Velox.event && window.Velox.event.emit) {
+            return window.Velox.event.emit(event, payload);
+          }
+        }
+
+        function tauriInvoke(cmd, args, options) {
+          if (cmd === 'plugin:event|listen') {
+            return tauriListen(args.event, args.handler);
+          }
+          if (cmd === 'plugin:event|unlisten') {
+            tauriUnlisten(args.event, args.eventId);
+            return Promise.resolve();
+          }
+          if (cmd === 'plugin:event|emit') {
+            tauriEmit(args.event, args.payload);
+            return Promise.resolve();
+          }
+          if (cmd === 'plugin:dialog|open') {
+            var opts = args && args.options ? args.options : (args || {});
+            return invoke(cmd, args || {}).then(function(result) {
+              if (!opts || opts.multiple) return result;
+              if (Array.isArray(result)) {
+                return result.length > 0 ? result[0] : null;
+              }
+              return result;
+            });
+          }
+          return invoke(cmd, args || {});
+        }
+
+        window.__TAURI_INTERNALS__ = {
+          invoke: tauriInvoke,
+          transformCallback: transformCallback,
+          unregisterCallback: function(id) { delete _cbs[id]; },
+          metadata: {
+            currentWindow: { label: 'main' },
+            currentWebview: { label: 'main' },
+            windows: [{ label: 'main' }],
+            webviews: [{ label: 'main', windowLabel: 'main' }]
+          },
+          convertFileSrc: function(path, protocol) {
+            protocol = protocol || 'asset';
+            return protocol + '://localhost/' + encodeURIComponent(path);
+          }
+        };
+
+        window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+          unregisterListener: function(event, eventId) {
+            tauriUnlisten(event, eventId);
+          }
+        };
+
+        window.__TAURI__ = window.__TAURI__ || {};
+        window.__TAURI__.__INVOKE_KEY__ = window.__TAURI__.__INVOKE_KEY__ || 'velox-compat';
+        window.__TAURI__.event = {
+          listen: function(event, handler) { return tauriListen(event, handler); },
+          emit: tauriEmit,
+          TauriEvent: { WINDOW_CLOSE_REQUESTED: 'tauri://close-requested' }
+        };
+        window.__TAURI__.core = {
+          invoke: tauriInvoke,
+          transformCallback: transformCallback
+        };
+        window.__TAURI__.path = window.__TAURI__.path || {};
+        window.__TAURI__.window = window.__TAURI__.window || {};
+      }
+
       async function invoke(command, args = {}) {
         await ensureListener();
         const response = await fetch(`ipc://localhost/${command}`, {
