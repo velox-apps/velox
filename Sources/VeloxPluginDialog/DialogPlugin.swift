@@ -185,6 +185,76 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
     var filters: [FilterDef]?
     var directory: Bool?
     var multiple: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+      case title
+      case defaultPath
+      case filters
+      case directory
+      case multiple
+      case options
+    }
+
+    private struct Payload: Codable, Sendable {
+      var title: String?
+      var defaultPath: String?
+      var filters: [FilterDef]?
+      var directory: Bool?
+      var multiple: Bool?
+    }
+
+    init(
+      title: String? = nil,
+      defaultPath: String? = nil,
+      filters: [FilterDef]? = nil,
+      directory: Bool? = nil,
+      multiple: Bool? = nil
+    ) {
+      self.title = title
+      self.defaultPath = defaultPath
+      self.filters = filters
+      self.directory = directory
+      self.multiple = multiple
+    }
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      if container.contains(.options) {
+        let payload = try container.decode(Payload.self, forKey: .options)
+        self.init(
+          title: payload.title,
+          defaultPath: payload.defaultPath,
+          filters: payload.filters,
+          directory: payload.directory,
+          multiple: payload.multiple
+        )
+        return
+      }
+
+      let payload = Payload(
+        title: try container.decodeIfPresent(String.self, forKey: .title),
+        defaultPath: try container.decodeIfPresent(String.self, forKey: .defaultPath),
+        filters: try container.decodeIfPresent([FilterDef].self, forKey: .filters),
+        directory: try container.decodeIfPresent(Bool.self, forKey: .directory),
+        multiple: try container.decodeIfPresent(Bool.self, forKey: .multiple)
+      )
+      self.init(
+        title: payload.title,
+        defaultPath: payload.defaultPath,
+        filters: payload.filters,
+        directory: payload.directory,
+        multiple: payload.multiple
+      )
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      try container.encodeIfPresent(title, forKey: .title)
+      try container.encodeIfPresent(defaultPath, forKey: .defaultPath)
+      try container.encodeIfPresent(filters, forKey: .filters)
+      try container.encodeIfPresent(directory, forKey: .directory)
+      try container.encodeIfPresent(multiple, forKey: .multiple)
+    }
   }
 
   struct SaveArgs: Codable, Sendable {
