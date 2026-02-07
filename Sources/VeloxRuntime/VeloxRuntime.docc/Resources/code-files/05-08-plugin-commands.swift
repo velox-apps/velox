@@ -86,12 +86,12 @@ struct LoggingPlugin: VeloxPlugin {
         // Inject a Logger helper into JavaScript
         context.webview.evaluate(script: """
             window.Logger = {
-                log: (level, message) => Velox.invoke('plugin:com.myapp.logging:log', { level, message }),
-                info: (message) => Velox.invoke('plugin:com.myapp.logging:log', { level: 'info', message }),
-                warn: (message) => Velox.invoke('plugin:com.myapp.logging:log', { level: 'warn', message }),
-                error: (message) => Velox.invoke('plugin:com.myapp.logging:log', { level: 'error', message }),
-                getLogs: () => Velox.invoke('plugin:com.myapp.logging:get_logs', {}),
-                clear: () => Velox.invoke('plugin:com.myapp.logging:clear_logs', {})
+                log: (level, message) => Velox.invoke('plugin:com.myapp.logging|log', { level, message }),
+                info: (message) => Velox.invoke('plugin:com.myapp.logging|log', { level: 'info', message }),
+                warn: (message) => Velox.invoke('plugin:com.myapp.logging|log', { level: 'warn', message }),
+                error: (message) => Velox.invoke('plugin:com.myapp.logging|log', { level: 'error', message }),
+                getLogs: () => Velox.invoke('plugin:com.myapp.logging|get_logs', {}),
+                clear: () => Velox.invoke('plugin:com.myapp.logging|clear_logs', {})
             };
             """)
     }

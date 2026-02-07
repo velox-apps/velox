@@ -12,20 +12,20 @@ import AppKit
 /// Built-in Opener plugin for opening files and URLs in external applications.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:opener:openUrl` - Open a URL in the default browser
-/// - `plugin:opener:openPath` - Open a file/folder with its default application
-/// - `plugin:opener:revealPath` - Reveal a file in Finder/Explorer
+/// - `plugin:opener|openUrl` - Open a URL in the default browser
+/// - `plugin:opener|openPath` - Open a file/folder with its default application
+/// - `plugin:opener|revealPath` - Reveal a file in Finder/Explorer
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Open URL in browser
-/// await invoke('plugin:opener:openUrl', { url: 'https://example.com' });
+/// await invoke('plugin:opener|openUrl', { url: 'https://example.com' });
 ///
 /// // Open file with default app
-/// await invoke('plugin:opener:openPath', { path: '/path/to/document.pdf' });
+/// await invoke('plugin:opener|openPath', { path: '/path/to/document.pdf' });
 ///
 /// // Reveal in Finder
-/// await invoke('plugin:opener:revealPath', { path: '/path/to/file.txt' });
+/// await invoke('plugin:opener|revealPath', { path: '/path/to/file.txt' });
 /// ```
 public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "opener"

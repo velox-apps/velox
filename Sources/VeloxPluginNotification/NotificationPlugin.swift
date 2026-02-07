@@ -12,22 +12,22 @@ import UserNotifications
 /// Built-in Notification plugin for sending native notifications.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:notification:isPermissionGranted` - Check if notifications are allowed
-/// - `plugin:notification:requestPermission` - Request notification permission
-/// - `plugin:notification:sendNotification` - Send a notification
+/// - `plugin:notification|isPermissionGranted` - Check if notifications are allowed
+/// - `plugin:notification|requestPermission` - Request notification permission
+/// - `plugin:notification|sendNotification` - Send a notification
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Check permission
-/// const granted = await invoke('plugin:notification:isPermissionGranted');
+/// const granted = await invoke('plugin:notification|isPermissionGranted');
 ///
 /// // Request permission if needed
 /// if (!granted) {
-///   const permission = await invoke('plugin:notification:requestPermission');
+///   const permission = await invoke('plugin:notification|requestPermission');
 /// }
 ///
 /// // Send notification
-/// await invoke('plugin:notification:sendNotification', {
+/// await invoke('plugin:notification|sendNotification', {
 ///   title: 'Hello',
 ///   body: 'This is a notification',
 ///   icon: 'path/to/icon.png'

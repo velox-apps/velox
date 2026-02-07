@@ -1,7 +1,7 @@
 // Open a file selection dialog
 async function selectFile() {
     try {
-        const result = await window.Velox.invoke('plugin:dialog:open', {
+        const result = await window.Velox.invoke('plugin:dialog|open', {
             title: 'Select a file',
             multiple: false,
             filters: [
@@ -26,7 +26,7 @@ async function selectFile() {
 
 // Open a multi-file selection dialog
 async function selectMultipleFiles() {
-    const result = await window.Velox.invoke('plugin:dialog:open', {
+    const result = await window.Velox.invoke('plugin:dialog|open', {
         title: 'Select files',
         multiple: true,
         directory: false
@@ -40,7 +40,7 @@ async function selectMultipleFiles() {
 
 // Select a directory
 async function selectDirectory() {
-    const result = await window.Velox.invoke('plugin:dialog:open', {
+    const result = await window.Velox.invoke('plugin:dialog|open', {
         title: 'Select a folder',
         directory: true
     });

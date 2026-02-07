@@ -1,7 +1,7 @@
 // Show a save file dialog
 async function saveFile(content) {
     try {
-        const path = await window.Velox.invoke('plugin:dialog:save', {
+        const path = await window.Velox.invoke('plugin:dialog|save', {
             title: 'Save file as',
             defaultName: 'untitled.txt',
             filters: [
@@ -34,7 +34,7 @@ async function saveDocument(doc) {
     const extension = doc.type === 'markdown' ? 'md' : 'txt';
     const defaultName = `${doc.title}.${extension}`;
 
-    const path = await window.Velox.invoke('plugin:dialog:save', {
+    const path = await window.Velox.invoke('plugin:dialog|save', {
         title: 'Save Document',
         defaultName: defaultName
     });

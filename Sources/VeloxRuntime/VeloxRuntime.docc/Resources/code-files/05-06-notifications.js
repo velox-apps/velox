@@ -1,7 +1,7 @@
 // Check if notifications are permitted
 async function checkNotificationPermission() {
     const granted = await window.Velox.invoke(
-        'plugin:notification:isPermissionGranted',
+        'plugin:notification|isPermissionGranted',
         {}
     );
     console.log('Notification permission:', granted ? 'granted' : 'denied');
@@ -11,7 +11,7 @@ async function checkNotificationPermission() {
 // Request notification permission
 async function requestNotificationPermission() {
     const granted = await window.Velox.invoke(
-        'plugin:notification:requestPermission',
+        'plugin:notification|requestPermission',
         {}
     );
 
@@ -41,7 +41,7 @@ async function sendNotification(title, body) {
 
         // Send the notification
         const success = await window.Velox.invoke(
-            'plugin:notification:sendNotification',
+            'plugin:notification|sendNotification',
             { title, body }
         );
 

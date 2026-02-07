@@ -41,7 +41,7 @@ struct PermissionManagerTests {
       ))
 
     let result = manager.checkPermission(
-      command: "plugin:fs:read",
+      command: "plugin:fs|read",
       webviewId: "main"
     )
 
@@ -107,24 +107,24 @@ struct PermissionManagerTests {
     manager.registerCapability(
       CapabilityConfig(
         identifier: "test",
-        permissions: ["plugin:fs:*"]
+        permissions: ["plugin:fs|*"]
       ))
 
     manager.registerPermission(
       PermissionConfig(
-        identifier: "plugin:fs:*",
-        allow: ["plugin:fs:*"],
-        deny: ["plugin:fs:delete"]
+        identifier: "plugin:fs|*",
+        allow: ["plugin:fs|*"],
+        deny: ["plugin:fs|delete"]
       ))
 
     // Read should be allowed
     #expect(
-      manager.checkPermission(command: "plugin:fs:read", webviewId: "main").isSuccess,
+      manager.checkPermission(command: "plugin:fs|read", webviewId: "main").isSuccess,
       "Read should be allowed")
 
     // Delete should be denied (deny takes priority)
     #expect(
-      manager.checkPermission(command: "plugin:fs:delete", webviewId: "main").isFailure,
+      manager.checkPermission(command: "plugin:fs|delete", webviewId: "main").isFailure,
       "Delete should be denied")
   }
 
@@ -144,7 +144,7 @@ struct PermissionManagerTests {
       manager.checkPermission(command: "anything", webviewId: "admin").isSuccess,
       "Wildcard should allow any command")
     #expect(
-      manager.checkPermission(command: "plugin:fs:delete", webviewId: "admin").isSuccess,
+      manager.checkPermission(command: "plugin:fs|delete", webviewId: "admin").isSuccess,
       "Wildcard should allow plugin commands too")
   }
 
@@ -155,17 +155,17 @@ struct PermissionManagerTests {
     manager.registerCapability(
       CapabilityConfig(
         identifier: "test",
-        permissions: ["plugin:analytics:*"]
+        permissions: ["plugin:analytics|*"]
       ))
 
     #expect(
-      manager.checkPermission(command: "plugin:analytics:track", webviewId: "main").isSuccess,
+      manager.checkPermission(command: "plugin:analytics|track", webviewId: "main").isSuccess,
       "Should allow analytics:track")
     #expect(
-      manager.checkPermission(command: "plugin:analytics:stats", webviewId: "main").isSuccess,
+      manager.checkPermission(command: "plugin:analytics|stats", webviewId: "main").isSuccess,
       "Should allow analytics:stats")
     #expect(
-      manager.checkPermission(command: "plugin:fs:read", webviewId: "main").isFailure,
+      manager.checkPermission(command: "plugin:fs|read", webviewId: "main").isFailure,
       "Should not allow fs:read")
   }
 
@@ -297,12 +297,12 @@ struct PermissionManagerTests {
         CapabilityConfig(
           identifier: "main",
           windows: ["main"],
-          permissions: ["greet", "plugin:analytics:*"]
+          permissions: ["greet", "plugin:analytics|*"]
         )
       ],
       permissions: [
-        "plugin:analytics:track": PermissionConfig(
-          identifier: "plugin:analytics:track",
+        "plugin:analytics|track": PermissionConfig(
+          identifier: "plugin:analytics|track",
           scopes: ["event": .values(["click", "view", "purchase"])]
         )
       ],
@@ -315,7 +315,7 @@ struct PermissionManagerTests {
       manager.checkPermission(command: "greet", webviewId: "main").isSuccess,
       "Greet should be allowed for main window")
     #expect(
-      manager.checkPermission(command: "plugin:analytics:track", webviewId: "main").isSuccess,
+      manager.checkPermission(command: "plugin:analytics|track", webviewId: "main").isSuccess,
       "Analytics track should be allowed")
   }
 
@@ -461,7 +461,7 @@ struct CapabilityConfigTests {
       identifier: "test",
       description: "Test capability",
       windows: ["main"],
-      permissions: ["greet", "plugin:analytics:*"]
+      permissions: ["greet", "plugin:analytics|*"]
     )
 
     let encoder = JSONEncoder()

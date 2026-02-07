@@ -13,30 +13,30 @@ import AppKit
 /// Built-in Dialog plugin providing native system dialogs.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:dialog:open` - Open file/directory selection dialog
-/// - `plugin:dialog:save` - Save file dialog
-/// - `plugin:dialog:message` - Show a message dialog
-/// - `plugin:dialog:ask` - Show a Yes/No question dialog
-/// - `plugin:dialog:confirm` - Show an Ok/Cancel confirmation dialog
+/// - `plugin:dialog|open` - Open file/directory selection dialog
+/// - `plugin:dialog|save` - Save file dialog
+/// - `plugin:dialog|message` - Show a message dialog
+/// - `plugin:dialog|ask` - Show a Yes/No question dialog
+/// - `plugin:dialog|confirm` - Show an Ok/Cancel confirmation dialog
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Open file dialog
-/// const files = await invoke('plugin:dialog:open', {
+/// const files = await invoke('plugin:dialog|open', {
 ///   title: 'Select File',
 ///   multiple: true,
 ///   filters: [{ name: 'Images', extensions: ['png', 'jpg'] }]
 /// });
 ///
 /// // Show message
-/// await invoke('plugin:dialog:message', {
+/// await invoke('plugin:dialog|message', {
 ///   title: 'Info',
 ///   message: 'Operation complete!',
 ///   kind: 'info'
 /// });
 ///
 /// // Ask question
-/// const answer = await invoke('plugin:dialog:ask', {
+/// const answer = await invoke('plugin:dialog|ask', {
 ///   message: 'Do you want to continue?',
 ///   title: 'Confirm'
 /// });

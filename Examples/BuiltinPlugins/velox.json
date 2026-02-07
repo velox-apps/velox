@@ -32,13 +32,13 @@
             "main"
           ],
           "permissions": [
-            "plugin:dialog:*",
-            "plugin:clipboard:*",
-            "plugin:notification:*",
-            "plugin:shell:*",
-            "plugin:os:*",
-            "plugin:process:*",
-            "plugin:opener:*"
+            "plugin:dialog|*",
+            "plugin:clipboard|*",
+            "plugin:notification|*",
+            "plugin:shell|*",
+            "plugin:os|*",
+            "plugin:process|*",
+            "plugin:opener|*"
           ]
         }
       ]

@@ -227,8 +227,8 @@ public struct AnalyticsPlugin: VeloxPlugin {
         // Inject analytics helper into the page
         context.webview.evaluate(script: """
             window.Analytics = {
-                track: (event, props) => window.Velox.invoke('plugin:com.example.analytics:track', { event, properties: props }),
-                identify: (userId, traits) => window.Velox.invoke('plugin:com.example.analytics:identify', { userId, traits })
+                track: (event, props) => window.Velox.invoke('plugin:com.example.analytics|track', { event, properties: props }),
+                identify: (userId, traits) => window.Velox.invoke('plugin:com.example.analytics|identify', { userId, traits })
             };
         """)
     }
@@ -433,7 +433,7 @@ Analytics.track('button_clicked', { buttonId: 'submit' });
 Analytics.identify('user-123', { plan: 'premium' });
 
 // Or use the standard invoke pattern
-await window.Velox.invoke('plugin:com.example.analytics:track', {
+await window.Velox.invoke('plugin:com.example.analytics|track', {
     event: 'purchase',
     properties: { amount: 99.99 }
 });
@@ -459,9 +459,9 @@ Commands registered by plugins are automatically prefixed with the plugin identi
 ```javascript
 // Plugin identifier: "com.example.logging"
 // Command registered as: "log"
-// Full command name: "plugin:com.example.logging:log"
+// Full command name: "plugin:com.example.logging|log"
 
-await window.Velox.invoke('plugin:com.example.logging:log', {
+await window.Velox.invoke('plugin:com.example.logging|log', {
     level: 'info',
     message: 'User clicked button'
 });

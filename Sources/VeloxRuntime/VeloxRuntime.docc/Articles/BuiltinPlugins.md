@@ -39,17 +39,17 @@ Native file dialogs and message boxes.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:dialog:open` | `OpenDialogArgs` | Show file open dialog |
-| `plugin:dialog:save` | `SaveDialogArgs` | Show file save dialog |
-| `plugin:dialog:message` | `MessageArgs` | Show message box |
-| `plugin:dialog:ask` | `AskArgs` | Show yes/no dialog |
-| `plugin:dialog:confirm` | `ConfirmArgs` | Show OK/Cancel dialog |
+| `plugin:dialog|open` | `OpenDialogArgs` | Show file open dialog |
+| `plugin:dialog|save` | `SaveDialogArgs` | Show file save dialog |
+| `plugin:dialog|message` | `MessageArgs` | Show message box |
+| `plugin:dialog|ask` | `AskArgs` | Show yes/no dialog |
+| `plugin:dialog|confirm` | `ConfirmArgs` | Show OK/Cancel dialog |
 
 ### Examples
 
 ```javascript
 // Open file dialog
-const files = await window.Velox.invoke('plugin:dialog:open', {
+const files = await window.Velox.invoke('plugin:dialog|open', {
     title: 'Select Files',
     multiple: true,
     filters: [
@@ -59,7 +59,7 @@ const files = await window.Velox.invoke('plugin:dialog:open', {
 });
 
 // Save file dialog
-const path = await window.Velox.invoke('plugin:dialog:save', {
+const path = await window.Velox.invoke('plugin:dialog|save', {
     title: 'Save Document',
     defaultPath: 'document.txt',
     filters: [
@@ -68,14 +68,14 @@ const path = await window.Velox.invoke('plugin:dialog:save', {
 });
 
 // Message box
-await window.Velox.invoke('plugin:dialog:message', {
+await window.Velox.invoke('plugin:dialog|message', {
     title: 'Success',
     message: 'File saved successfully!',
     type: 'info'  // 'info', 'warning', 'error'
 });
 
 // Confirmation dialog
-const confirmed = await window.Velox.invoke('plugin:dialog:confirm', {
+const confirmed = await window.Velox.invoke('plugin:dialog|confirm', {
     title: 'Confirm Delete',
     message: 'Are you sure you want to delete this file?',
     okLabel: 'Delete',
@@ -93,18 +93,18 @@ Read and write system clipboard.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:clipboard:read` | None | Read clipboard text |
-| `plugin:clipboard:write` | `WriteArgs` | Write text to clipboard |
+| `plugin:clipboard|read` | None | Read clipboard text |
+| `plugin:clipboard|write` | `WriteArgs` | Write text to clipboard |
 
 ### Examples
 
 ```javascript
 // Read clipboard
-const text = await window.Velox.invoke('plugin:clipboard:read');
+const text = await window.Velox.invoke('plugin:clipboard|read');
 console.log('Clipboard contains:', text);
 
 // Write to clipboard
-await window.Velox.invoke('plugin:clipboard:write', {
+await window.Velox.invoke('plugin:clipboard|write', {
     text: 'Hello from Velox!'
 });
 ```
@@ -119,18 +119,18 @@ System notifications.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:notification:send` | `NotificationArgs` | Send a notification |
-| `plugin:notification:requestPermission` | None | Request notification permission |
+| `plugin:notification|send` | `NotificationArgs` | Send a notification |
+| `plugin:notification|requestPermission` | None | Request notification permission |
 
 ### Examples
 
 ```javascript
 // Request permission first
-const permission = await window.Velox.invoke('plugin:notification:requestPermission');
+const permission = await window.Velox.invoke('plugin:notification|requestPermission');
 
 if (permission.granted) {
     // Send notification
-    await window.Velox.invoke('plugin:notification:send', {
+    await window.Velox.invoke('plugin:notification|send', {
         title: 'Download Complete',
         body: 'Your file has been downloaded.',
         icon: 'app://localhost/icons/download.png'
@@ -148,15 +148,15 @@ Execute system commands.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:shell:execute` | `ExecuteArgs` | Run command and wait |
-| `plugin:shell:spawn` | `SpawnArgs` | Start background process |
-| `plugin:shell:kill` | `KillArgs` | Terminate a process |
+| `plugin:shell|execute` | `ExecuteArgs` | Run command and wait |
+| `plugin:shell|spawn` | `SpawnArgs` | Start background process |
+| `plugin:shell|kill` | `KillArgs` | Terminate a process |
 
 ### Examples
 
 ```javascript
 // Execute command and get output
-const result = await window.Velox.invoke('plugin:shell:execute', {
+const result = await window.Velox.invoke('plugin:shell|execute', {
     program: 'ls',
     args: ['-la', '/Users']
 });
@@ -164,7 +164,7 @@ console.log('Output:', result.stdout);
 console.log('Exit code:', result.code);
 
 // Spawn background process
-const process = await window.Velox.invoke('plugin:shell:spawn', {
+const process = await window.Velox.invoke('plugin:shell|spawn', {
     program: 'tail',
     args: ['-f', '/var/log/system.log']
 });
@@ -175,7 +175,7 @@ window.Velox.listen(`shell:stdout:${process.pid}`, (e) => {
 });
 
 // Kill the process later
-await window.Velox.invoke('plugin:shell:kill', { pid: process.pid });
+await window.Velox.invoke('plugin:shell|kill', { pid: process.pid });
 ```
 
 > Warning: Shell commands can be dangerous. Only expose to trusted frontends with proper permission controls.
@@ -190,18 +190,18 @@ System information.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:os:version` | None | Get OS version string |
-| `plugin:os:arch` | None | Get CPU architecture |
-| `plugin:os:hostname` | None | Get machine hostname |
-| `plugin:os:locale` | None | Get system locale |
+| `plugin:os|version` | None | Get OS version string |
+| `plugin:os|arch` | None | Get CPU architecture |
+| `plugin:os|hostname` | None | Get machine hostname |
+| `plugin:os|locale` | None | Get system locale |
 
 ### Examples
 
 ```javascript
-const version = await window.Velox.invoke('plugin:os:version');
-const arch = await window.Velox.invoke('plugin:os:arch');
-const hostname = await window.Velox.invoke('plugin:os:hostname');
-const locale = await window.Velox.invoke('plugin:os:locale');
+const version = await window.Velox.invoke('plugin:os|version');
+const arch = await window.Velox.invoke('plugin:os|arch');
+const hostname = await window.Velox.invoke('plugin:os|hostname');
+const locale = await window.Velox.invoke('plugin:os|locale');
 
 console.log(`Running on ${hostname}`);
 console.log(`OS: ${version} (${arch})`);
@@ -218,23 +218,23 @@ Application process control.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:process:exit` | `ExitArgs` | Exit the application |
-| `plugin:process:relaunch` | None | Restart the application |
-| `plugin:process:environment` | None | Get environment variables |
+| `plugin:process|exit` | `ExitArgs` | Exit the application |
+| `plugin:process|relaunch` | None | Restart the application |
+| `plugin:process|environment` | None | Get environment variables |
 
 ### Examples
 
 ```javascript
 // Get environment variables
-const env = await window.Velox.invoke('plugin:process:environment');
+const env = await window.Velox.invoke('plugin:process|environment');
 console.log('PATH:', env.PATH);
 console.log('HOME:', env.HOME);
 
 // Relaunch the app
-await window.Velox.invoke('plugin:process:relaunch');
+await window.Velox.invoke('plugin:process|relaunch');
 
 // Exit with code
-await window.Velox.invoke('plugin:process:exit', { code: 0 });
+await window.Velox.invoke('plugin:process|exit', { code: 0 });
 ```
 
 ## Opener Plugin
@@ -247,23 +247,23 @@ Open files and URLs with default applications.
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `plugin:opener:open` | `OpenArgs` | Open file or URL |
+| `plugin:opener|open` | `OpenArgs` | Open file or URL |
 
 ### Examples
 
 ```javascript
 // Open URL in default browser
-await window.Velox.invoke('plugin:opener:open', {
+await window.Velox.invoke('plugin:opener|open', {
     path: 'https://velox.dev'
 });
 
 // Open file with default application
-await window.Velox.invoke('plugin:opener:open', {
+await window.Velox.invoke('plugin:opener|open', {
     path: '/Users/me/document.pdf'
 });
 
 // Open folder in Finder
-await window.Velox.invoke('plugin:opener:open', {
+await window.Velox.invoke('plugin:opener|open', {
     path: '/Users/me/Downloads'
 });
 ```

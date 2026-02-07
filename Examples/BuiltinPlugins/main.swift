@@ -202,7 +202,7 @@ let html = """
     // Dialog Plugin
     async function openFile() {
       try {
-        const result = await invoke('plugin:dialog:open', {
+        const result = await invoke('plugin:dialog|open', {
           title: 'Select a file',
           multiple: true
         });
@@ -212,7 +212,7 @@ let html = """
 
     async function saveFile() {
       try {
-        const result = await invoke('plugin:dialog:save', {
+        const result = await invoke('plugin:dialog|save', {
           title: 'Save file as',
           defaultName: 'untitled.txt'
         });
@@ -222,7 +222,7 @@ let html = """
 
     async function showMessage() {
       try {
-        await invoke('plugin:dialog:message', {
+        await invoke('plugin:dialog|message', {
           title: 'Information',
           message: 'This is a message dialog!',
           kind: 'info'
@@ -233,7 +233,7 @@ let html = """
 
     async function showAsk() {
       try {
-        const result = await invoke('plugin:dialog:ask', {
+        const result = await invoke('plugin:dialog|ask', {
           title: 'Question',
           message: 'Do you like Velox?',
           kind: 'info'
@@ -244,7 +244,7 @@ let html = """
 
     async function showConfirm() {
       try {
-        const result = await invoke('plugin:dialog:confirm', {
+        const result = await invoke('plugin:dialog|confirm', {
           title: 'Confirm',
           message: 'Are you sure you want to continue?',
           kind: 'warning'
@@ -257,21 +257,21 @@ let html = """
     async function writeClipboard() {
       try {
         const text = document.getElementById('clipboard-text').value;
-        await invoke('plugin:clipboard:writeText', { text });
+        await invoke('plugin:clipboard|writeText', { text });
         log('clipboard-output', `Copied to clipboard: "${text}"`);
       } catch (e) { log('clipboard-output', `Error: ${e}`); }
     }
 
     async function readClipboard() {
       try {
-        const text = await invoke('plugin:clipboard:readText', {});
+        const text = await invoke('plugin:clipboard|readText', {});
         log('clipboard-output', `Clipboard contents: "${text || '(empty)'}"`);
       } catch (e) { log('clipboard-output', `Error: ${e}`); }
     }
 
     async function clearClipboard() {
       try {
-        await invoke('plugin:clipboard:clear', {});
+        await invoke('plugin:clipboard|clear', {});
         log('clipboard-output', 'Clipboard cleared');
       } catch (e) { log('clipboard-output', `Error: ${e}`); }
     }
@@ -279,14 +279,14 @@ let html = """
     // Notification Plugin
     async function checkPermission() {
       try {
-        const granted = await invoke('plugin:notification:isPermissionGranted', {});
+        const granted = await invoke('plugin:notification|isPermissionGranted', {});
         log('notif-output', `Permission granted: ${granted}`);
       } catch (e) { log('notif-output', `Error: ${e}`); }
     }
 
     async function requestPermission() {
       try {
-        const granted = await invoke('plugin:notification:requestPermission', {});
+        const granted = await invoke('plugin:notification|requestPermission', {});
         log('notif-output', `Permission ${granted ? 'granted' : 'denied'}`);
       } catch (e) { log('notif-output', `Error: ${e}`); }
     }
@@ -295,7 +295,7 @@ let html = """
       try {
         const title = document.getElementById('notif-title').value;
         const body = document.getElementById('notif-body').value;
-        const success = await invoke('plugin:notification:sendNotification', { title, body });
+        const success = await invoke('plugin:notification|sendNotification', { title, body });
         log('notif-output', success ? 'Notification sent!' : 'Failed to send notification');
       } catch (e) { log('notif-output', `Error: ${e}`); }
     }
@@ -306,7 +306,7 @@ let html = """
         const program = document.getElementById('shell-cmd').value;
         const argsStr = document.getElementById('shell-args').value;
         const args = argsStr ? argsStr.split(',').map(s => s.trim()) : [];
-        const result = await invoke('plugin:shell:execute', { program, args });
+        const result = await invoke('plugin:shell|execute', { program, args });
         log('shell-output', `Exit code: ${result.code}\\n\\nSTDOUT:\\n${result.stdout}\\n\\nSTDERR:\\n${result.stderr}`);
       } catch (e) { log('shell-output', `Error: ${e}`); }
     }
@@ -314,28 +314,28 @@ let html = """
     // OS Info Plugin
     async function getOSInfo() {
       try {
-        const info = await invoke('plugin:os:info', {});
+        const info = await invoke('plugin:os|info', {});
         log('os-output', info);
       } catch (e) { log('os-output', `Error: ${e}`); }
     }
 
     async function getPlatform() {
       try {
-        const platform = await invoke('plugin:os:platform', {});
+        const platform = await invoke('plugin:os|platform', {});
         log('os-output', `Platform: ${platform}`);
       } catch (e) { log('os-output', `Error: ${e}`); }
     }
 
     async function getArch() {
       try {
-        const arch = await invoke('plugin:os:arch', {});
+        const arch = await invoke('plugin:os|arch', {});
         log('os-output', `Architecture: ${arch}`);
       } catch (e) { log('os-output', `Error: ${e}`); }
     }
 
     async function getHostname() {
       try {
-        const hostname = await invoke('plugin:os:hostname', {});
+        const hostname = await invoke('plugin:os|hostname', {});
         log('os-output', `Hostname: ${hostname}`);
       } catch (e) { log('os-output', `Error: ${e}`); }
     }
@@ -344,9 +344,9 @@ let html = """
     async function getProcessInfo() {
       try {
         const [pid, cwd, execPath] = await Promise.all([
-          invoke('plugin:process:pid', {}),
-          invoke('plugin:process:cwd', {}),
-          invoke('plugin:process:executablePath', {})
+          invoke('plugin:process|pid', {}),
+          invoke('plugin:process|cwd', {}),
+          invoke('plugin:process|executablePath', {})
         ]);
         log('process-output', `PID: ${pid}\\nCWD: ${cwd}\\nExecutable: ${execPath}`);
       } catch (e) { log('process-output', `Error: ${e}`); }
@@ -354,21 +354,21 @@ let html = """
 
     async function getPid() {
       try {
-        const pid = await invoke('plugin:process:pid', {});
+        const pid = await invoke('plugin:process|pid', {});
         log('process-output', `PID: ${pid}`);
       } catch (e) { log('process-output', `Error: ${e}`); }
     }
 
     async function getCwd() {
       try {
-        const cwd = await invoke('plugin:process:cwd', {});
+        const cwd = await invoke('plugin:process|cwd', {});
         log('process-output', `Working Directory: ${cwd}`);
       } catch (e) { log('process-output', `Error: ${e}`); }
     }
 
     async function getEnvAll() {
       try {
-        const env = await invoke('plugin:process:envAll', {});
+        const env = await invoke('plugin:process|envAll', {});
         log('process-output', env);
       } catch (e) { log('process-output', `Error: ${e}`); }
     }
@@ -377,7 +377,7 @@ let html = """
     async function openUrl() {
       try {
         const url = document.getElementById('open-url').value;
-        const success = await invoke('plugin:opener:openUrl', { url });
+        const success = await invoke('plugin:opener|openUrl', { url });
         log('opener-output', success ? `Opened URL: ${url}` : 'Failed to open URL');
       } catch (e) { log('opener-output', `Error: ${e}`); }
     }
@@ -385,7 +385,7 @@ let html = """
     async function openPath() {
       try {
         const path = document.getElementById('open-path').value;
-        const success = await invoke('plugin:opener:openPath', { path });
+        const success = await invoke('plugin:opener|openPath', { path });
         log('opener-output', success ? `Opened path: ${path}` : 'Failed to open path');
       } catch (e) { log('opener-output', `Error: ${e}`); }
     }
@@ -393,7 +393,7 @@ let html = """
     async function revealPath() {
       try {
         const path = document.getElementById('open-path').value;
-        const success = await invoke('plugin:opener:revealPath', { path });
+        const success = await invoke('plugin:opener|revealPath', { path });
         log('opener-output', success ? `Revealed in Finder: ${path}` : 'Failed to reveal path');
       } catch (e) { log('opener-output', `Error: ${e}`); }
     }

@@ -380,7 +380,7 @@ public final class PermissionManager: @unchecked Sendable {
 
   /// Check if a command is allowed for a given webview
   /// - Parameters:
-  ///   - command: The command name (e.g., "greet" or "plugin:fs:read")
+  ///   - command: The command name (e.g., "greet" or "plugin:fs|read")
   ///   - webviewId: The webview identifier making the request
   ///   - scopeValues: Values to check against scopes (e.g., ["path": "/tmp/file.txt"])
   /// - Returns: Result indicating success or the permission error
@@ -488,16 +488,25 @@ public final class PermissionManager: @unchecked Sendable {
     }
 
     // Prefix match for plugin commands
-    // e.g., permission "plugin:fs" matches command "plugin:fs:read"
-    if command.hasPrefix("\(permissionId):") {
+    // e.g., permission "plugin:fs" matches command "plugin:fs|read"
+    if command.hasPrefix("\(permissionId)|") {
       return true
     }
 
     // Wildcard within permission
-    // e.g., permission "plugin:fs:*" matches "plugin:fs:read"
-    if permissionId.hasSuffix(":*") {
+    // e.g., permission "plugin:fs|*" matches "plugin:fs|read"
+    if permissionId.hasSuffix("|*") {
       let prefix = String(permissionId.dropLast(2))
       if command.hasPrefix(prefix) {
+        return true
+      }
+    }
+
+    // Legacy wildcard form for migration
+    // e.g., permission "plugin:fs|*" matches "plugin:fs|read"
+    if permissionId.hasSuffix(":*") {
+      let prefix = String(permissionId.dropLast(2))
+      if command.hasPrefix("\(prefix)|") {
         return true
       }
     }

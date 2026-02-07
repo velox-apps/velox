@@ -8,23 +8,23 @@ import VeloxRuntime
 /// Built-in Process plugin for accessing current process information.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:process:exit` - Exit the application
-/// - `plugin:process:relaunch` - Relaunch the application
-/// - `plugin:process:pid` - Get the process ID
-/// - `plugin:process:cwd` - Get the current working directory
-/// - `plugin:process:env` - Get environment variables
-/// - `plugin:process:args` - Get command line arguments
+/// - `plugin:process|exit` - Exit the application
+/// - `plugin:process|relaunch` - Relaunch the application
+/// - `plugin:process|pid` - Get the process ID
+/// - `plugin:process|cwd` - Get the current working directory
+/// - `plugin:process|env` - Get environment variables
+/// - `plugin:process|args` - Get command line arguments
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Get process ID
-/// const pid = await invoke('plugin:process:pid');
+/// const pid = await invoke('plugin:process|pid');
 ///
 /// // Get environment variable
-/// const home = await invoke('plugin:process:env', { name: 'HOME' });
+/// const home = await invoke('plugin:process|env', { name: 'HOME' });
 ///
 /// // Exit application
-/// await invoke('plugin:process:exit', { code: 0 });
+/// await invoke('plugin:process|exit', { code: 0 });
 /// ```
 public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "process"

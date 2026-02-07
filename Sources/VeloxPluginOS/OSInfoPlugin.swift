@@ -12,20 +12,20 @@ import IOKit
 /// Built-in OS Info plugin for reading system information.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:os:platform` - Get the operating system platform
-/// - `plugin:os:version` - Get the OS version
-/// - `plugin:os:type` - Get the OS type
-/// - `plugin:os:arch` - Get the CPU architecture
-/// - `plugin:os:hostname` - Get the hostname
-/// - `plugin:os:locale` - Get the system locale
-/// - `plugin:os:tempdir` - Get the temp directory path
-/// - `plugin:os:homedir` - Get the home directory path
+/// - `plugin:os|platform` - Get the operating system platform
+/// - `plugin:os|version` - Get the OS version
+/// - `plugin:os|type` - Get the OS type
+/// - `plugin:os|arch` - Get the CPU architecture
+/// - `plugin:os|hostname` - Get the hostname
+/// - `plugin:os|locale` - Get the system locale
+/// - `plugin:os|tempdir` - Get the temp directory path
+/// - `plugin:os|homedir` - Get the home directory path
 ///
 /// Example frontend usage:
 /// ```javascript
-/// const platform = await invoke('plugin:os:platform'); // 'darwin'
-/// const version = await invoke('plugin:os:version');   // '14.0.0'
-/// const arch = await invoke('plugin:os:arch');         // 'aarch64' or 'x86_64'
+/// const platform = await invoke('plugin:os|platform'); // 'darwin'
+/// const version = await invoke('plugin:os|version');   // '14.0.0'
+/// const arch = await invoke('plugin:os|arch');         // 'aarch64' or 'x86_64'
 /// ```
 public final class OSInfoPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "os"

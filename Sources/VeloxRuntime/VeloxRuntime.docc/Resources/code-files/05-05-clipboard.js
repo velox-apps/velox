@@ -1,7 +1,7 @@
 // Write text to clipboard
 async function copyToClipboard(text) {
     try {
-        await window.Velox.invoke('plugin:clipboard:writeText', { text });
+        await window.Velox.invoke('plugin:clipboard|writeText', { text });
         console.log('Copied to clipboard:', text);
         return true;
     } catch (error) {
@@ -13,7 +13,7 @@ async function copyToClipboard(text) {
 // Read text from clipboard
 async function pasteFromClipboard() {
     try {
-        const text = await window.Velox.invoke('plugin:clipboard:readText', {});
+        const text = await window.Velox.invoke('plugin:clipboard|readText', {});
         console.log('Clipboard contents:', text);
         return text;
     } catch (error) {
@@ -24,7 +24,7 @@ async function pasteFromClipboard() {
 
 // Clear the clipboard
 async function clearClipboard() {
-    await window.Velox.invoke('plugin:clipboard:clear', {});
+    await window.Velox.invoke('plugin:clipboard|clear', {});
 }
 
 // Example: Copy button handler

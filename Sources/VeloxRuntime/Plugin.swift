@@ -186,7 +186,7 @@ public extension VeloxPlugin {
 // MARK: - Plugin Command Registry
 
 /// A command registry scoped to a specific plugin.
-/// Commands are automatically prefixed with `plugin:<pluginName>:`.
+/// Commands are automatically prefixed with `plugin:<pluginName>|`.
 public final class PluginCommandRegistry: @unchecked Sendable {
   private let pluginName: String
   private let globalRegistry: CommandRegistry
@@ -198,11 +198,11 @@ public final class PluginCommandRegistry: @unchecked Sendable {
 
   /// The prefix used for this plugin's commands
   public var prefix: String {
-    "plugin:\(pluginName):"
+    "plugin:\(pluginName)|"
   }
 
   /// Register a command with automatic plugin prefix.
-  /// Command will be registered as "plugin:<pluginName>:<commandName>".
+  /// Command will be registered as "plugin:<pluginName>|<commandName>".
   @discardableResult
   public func register(_ name: String, handler: @escaping AnyCommandHandler) -> Self {
     let fullName = "\(prefix)\(name)"

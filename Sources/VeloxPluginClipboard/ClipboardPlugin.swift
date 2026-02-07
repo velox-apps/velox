@@ -12,22 +12,22 @@ import AppKit
 /// Built-in Clipboard plugin for reading and writing system clipboard.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:clipboard:writeText` - Write plain text to clipboard
-/// - `plugin:clipboard:readText` - Read plain text from clipboard
-/// - `plugin:clipboard:writeHtml` - Write HTML to clipboard (with text fallback)
-/// - `plugin:clipboard:readHtml` - Read HTML from clipboard
-/// - `plugin:clipboard:clear` - Clear the clipboard
+/// - `plugin:clipboard|writeText` - Write plain text to clipboard
+/// - `plugin:clipboard|readText` - Read plain text from clipboard
+/// - `plugin:clipboard|writeHtml` - Write HTML to clipboard (with text fallback)
+/// - `plugin:clipboard|readHtml` - Read HTML from clipboard
+/// - `plugin:clipboard|clear` - Clear the clipboard
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Write text
-/// await invoke('plugin:clipboard:writeText', { text: 'Hello, World!' });
+/// await invoke('plugin:clipboard|writeText', { text: 'Hello, World!' });
 ///
 /// // Read text
-/// const text = await invoke('plugin:clipboard:readText');
+/// const text = await invoke('plugin:clipboard|readText');
 ///
 /// // Write HTML
-/// await invoke('plugin:clipboard:writeHtml', {
+/// await invoke('plugin:clipboard|writeHtml', {
 ///   html: '<b>Bold</b>',
 ///   altText: 'Bold'
 /// });

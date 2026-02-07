@@ -8,9 +8,9 @@ import VeloxRuntime
 /// Built-in Shell plugin for executing system commands.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:shell:execute` - Execute a command and wait for completion
-/// - `plugin:shell:spawn` - Spawn a command in background (returns immediately)
-/// - `plugin:shell:kill` - Kill a spawned process
+/// - `plugin:shell|execute` - Execute a command and wait for completion
+/// - `plugin:shell|spawn` - Spawn a command in background (returns immediately)
+/// - `plugin:shell|kill` - Kill a spawned process
 ///
 /// **Security Note**: This plugin should be used carefully with proper permission scoping
 /// to prevent arbitrary command execution.
@@ -18,20 +18,20 @@ import VeloxRuntime
 /// Example frontend usage:
 /// ```javascript
 /// // Execute command and get output
-/// const result = await invoke('plugin:shell:execute', {
+/// const result = await invoke('plugin:shell|execute', {
 ///   program: 'ls',
 ///   args: ['-la', '/tmp']
 /// });
 /// console.log(result.stdout);
 ///
 /// // Spawn background process
-/// const pid = await invoke('plugin:shell:spawn', {
+/// const pid = await invoke('plugin:shell|spawn', {
 ///   program: 'tail',
 ///   args: ['-f', '/var/log/system.log']
 /// });
 ///
 /// // Kill process
-/// await invoke('plugin:shell:kill', { pid });
+/// await invoke('plugin:shell|kill', { pid });
 /// ```
 public final class ShellPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "shell"

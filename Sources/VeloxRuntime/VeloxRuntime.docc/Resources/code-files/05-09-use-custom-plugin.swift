@@ -36,7 +36,7 @@ main()
 // console.log('Recent logs:', logs);
 //
 // Or use the full command name:
-// await Velox.invoke('plugin:com.myapp.logging:log', {
+// await Velox.invoke('plugin:com.myapp.logging|log', {
 //     level: 'info',
 //     message: 'Hello from frontend!'
 // });

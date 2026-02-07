@@ -107,10 +107,10 @@ final class AnalyticsPlugin: VeloxPlugin {
     return """
       window.Analytics = {
         track: function(event, data) {
-          return Velox.invoke('plugin:com.velox.analytics:track', { event: event, data: data || {} });
+          return Velox.invoke('plugin:com.velox.analytics|track', { event: event, data: data || {} });
         },
         getStats: function() {
-          return Velox.invoke('plugin:com.velox.analytics:stats', {});
+          return Velox.invoke('plugin:com.velox.analytics|stats', {});
         }
       };
       console.log('[Analytics] Plugin initialized for webview: \(context.label)');
@@ -149,7 +149,7 @@ final class LoggerPlugin: VeloxPlugin {
     return """
       window.Logger = {
         log: function(level, message) {
-          return Velox.invoke('plugin:com.velox.logger:log', { level: level, message: message });
+          return Velox.invoke('plugin:com.velox.logger|log', { level: level, message: message });
         },
         info: function(message) { return this.log('info', message); },
         warn: function(message) { return this.log('warn', message); },
@@ -285,7 +285,7 @@ let html = """
       <h2>Plugin Commands</h2>
       <p style="color: rgba(255,255,255,0.6); font-size: 14px; margin-bottom: 15px;">
         Plugin commands are namespaced:<br>
-        <code>plugin:com.velox.analytics:track</code>
+        <code>plugin:com.velox.analytics|track</code>
       </p>
       <button onclick="listPlugins()">Show Registered Plugins</button>
       <div class="result" id="plugins-result">-</div>
