@@ -809,13 +809,15 @@ struct SecurityScriptGeneratorTests {
   func noFreezeScriptWhenDisabled() {
     let config = SecurityConfig(freezePrototype: false)
     let script = SecurityScriptGenerator.generateInitScript(config: config, includeChannelAPI: false)
-    #expect(script.isEmpty)
+    #expect(!script.contains("Object.freeze"))
+    #expect(script.contains("__VELOX_INVOKE__"))
   }
 
   @Test("No freeze script when config is nil")
   func noFreezeScriptWhenNil() {
     let script = SecurityScriptGenerator.generateInitScript(config: nil, includeChannelAPI: false)
-    #expect(script.isEmpty)
+    #expect(!script.contains("Object.freeze"))
+    #expect(script.contains("__VELOX_INVOKE__"))
   }
 
   @Test("Generates freeze script when enabled")

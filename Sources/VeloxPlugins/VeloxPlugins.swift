@@ -16,6 +16,8 @@
 /// - ``OSInfoPlugin`` - Operating system information
 /// - ``ProcessPlugin`` - Current process management
 /// - ``OpenerPlugin`` - Open files/URLs with external apps
+/// - ``ResourcesPlugin`` - Close resources created by plugins
+/// - ``MenuPlugin`` - Native application and context menus
 ///
 /// ## Usage
 ///
@@ -47,3 +49,5 @@
 @_exported import VeloxPluginOS
 @_exported import VeloxPluginProcess
 @_exported import VeloxPluginOpener
+@_exported import VeloxPluginResources
+@_exported import VeloxPluginMenu

@@ -27,6 +27,11 @@ import Foundation
 /// }
 /// ```
 public final class Channel<T: Encodable & Sendable>: @unchecked Sendable {
+  public enum CallbackStyle: Sendable {
+    case velox
+    case tauri
+  }
+
   /// The unique channel identifier
   public let id: String
 
@@ -35,6 +40,7 @@ public final class Channel<T: Encodable & Sendable>: @unchecked Sendable {
 
   /// Callback function name on the frontend
   private let callbackName: String
+  private let callbackStyle: CallbackStyle
 
   /// Whether the channel has been closed
   private var isClosed = false
@@ -44,10 +50,16 @@ public final class Channel<T: Encodable & Sendable>: @unchecked Sendable {
   private var sequenceNumber: UInt64 = 0
 
   /// Create a channel with an identifier and webview handle
-  public init(id: String, webview: WebviewHandle?, callbackName: String = "__VELOX_CHANNEL_CALLBACK__") {
+  public init(
+    id: String,
+    webview: WebviewHandle?,
+    callbackName: String = "__VELOX_CHANNEL_CALLBACK__",
+    callbackStyle: CallbackStyle = .velox
+  ) {
     self.id = id
     self.webview = webview
     self.callbackName = callbackName
+    self.callbackStyle = callbackStyle
   }
 
   /// Send a message through the channel
@@ -78,15 +90,29 @@ public final class Channel<T: Encodable & Sendable>: @unchecked Sendable {
     }
 
     // Create the callback invocation
-    let script = """
-      (function() {
-        if (typeof \(callbackName) === 'function') {
-          \(callbackName)('\(id)', \(seq), \(messageJSON));
-        } else if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
-          window.__veloxChannels['\(id)'].receive(\(seq), \(messageJSON));
-        }
-      })();
-      """
+    let script: String
+    switch callbackStyle {
+    case .velox:
+      script = """
+        (function() {
+          if (typeof \(callbackName) === 'function') {
+            \(callbackName)('\(id)', \(seq), \(messageJSON));
+          } else if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
+            window.__veloxChannels['\(id)'].receive(\(seq), \(messageJSON));
+          }
+        })();
+        """
+    case .tauri:
+      script = """
+        (function() {
+          if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.runCallback === 'function') {
+            window.__TAURI_INTERNALS__.runCallback('\(id)', { index: \(seq), message: \(messageJSON) });
+          } else if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
+            window.__veloxChannels['\(id)'].receive(\(seq), \(messageJSON));
+          }
+        })();
+        """
+    }
 
     return webview.evaluate(script: script)
   }
@@ -98,14 +124,32 @@ public final class Channel<T: Encodable & Sendable>: @unchecked Sendable {
     lock.unlock()
 
     // Notify frontend that channel is closed
-    _ = webview?.evaluate(script: """
-      (function() {
-        if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
-          window.__veloxChannels['\(id)'].close();
-          delete window.__veloxChannels['\(id)'];
-        }
-      })();
-      """)
+    let script: String
+    switch callbackStyle {
+    case .velox:
+      script = """
+        (function() {
+          if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
+            window.__veloxChannels['\(id)'].close();
+            delete window.__veloxChannels['\(id)'];
+          }
+        })();
+        """
+    case .tauri:
+      script = """
+        (function() {
+          if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.unregisterCallback === 'function') {
+            window.__TAURI_INTERNALS__.unregisterCallback('\(id)');
+          }
+          if (typeof window.__veloxChannels !== 'undefined' && window.__veloxChannels['\(id)']) {
+            window.__veloxChannels['\(id)'].close();
+            delete window.__veloxChannels['\(id)'];
+          }
+        })();
+        """
+    }
+
+    _ = webview?.evaluate(script: script)
   }
 
   /// Check if the channel is closed
@@ -228,23 +272,30 @@ public extension CommandContext {
     let args = decodeArgs()
 
     // Check if the argument is a channel reference
-    guard let channelData = args[key] as? [String: Any],
-          let channelId = channelData["__channelId"] as? String
-    else {
-      return nil
+    if let channelData = args[key] as? [String: Any],
+       let channelId = channelData["__channelId"] as? String {
+      return Channel<T>(id: channelId, webview: webview)
     }
 
-    // Create a channel with the webview handle
-    return Channel<T>(id: channelId, webview: webview)
+    if let channelString = args[key] as? String,
+       channelString.hasPrefix("__CHANNEL__:") {
+      let channelId = String(channelString.dropFirst("__CHANNEL__:".count))
+      return Channel<T>(id: channelId, webview: webview, callbackStyle: .tauri)
+    }
+
+    return nil
   }
 
   /// Check if an argument is a channel reference
   func hasChannel(_ key: String) -> Bool {
     let args = decodeArgs()
-    guard let channelData = args[key] as? [String: Any] else {
-      return false
+    if let channelData = args[key] as? [String: Any] {
+      return channelData["__channelId"] != nil
     }
-    return channelData["__channelId"] != nil
+    if let channelString = args[key] as? String {
+      return channelString.hasPrefix("__CHANNEL__:")
+    }
+    return false
   }
 }
 

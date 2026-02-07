@@ -662,6 +662,9 @@ public struct BundleConfig: Codable, Sendable {
   /// Bundle targets (e.g., app, dmg)
   public var targets: [BundleTarget]?
 
+  /// Publisher name for the bundle metadata
+  public var publisher: String?
+
   /// Bundle icon path(s)
   public var icon: BundleIcon?
 
@@ -674,12 +677,14 @@ public struct BundleConfig: Codable, Sendable {
   public init(
     active: Bool? = nil,
     targets: [BundleTarget]? = nil,
+    publisher: String? = nil,
     icon: BundleIcon? = nil,
     resources: [String]? = nil,
     macos: MacOSBundleConfig? = nil
   ) {
     self.active = active
     self.targets = targets
+    self.publisher = publisher
     self.icon = icon
     self.resources = resources
     self.macos = macos

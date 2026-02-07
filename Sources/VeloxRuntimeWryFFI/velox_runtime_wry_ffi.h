@@ -57,11 +57,27 @@ typedef struct {
 
 typedef struct {
   char _unused;
+} VeloxIconMenuItemHandle;
+
+typedef struct {
+  char _unused;
+} VeloxPredefinedMenuItemHandle;
+
+typedef struct {
+  char _unused;
 } VeloxCheckMenuItemHandle;
 
 typedef struct {
   char _unused;
 } VeloxSeparatorHandle;
+
+typedef enum {
+  VELOX_MENU_ITEM_KIND_MENU_ITEM = 0,
+  VELOX_MENU_ITEM_KIND_PREDEFINED = 1,
+  VELOX_MENU_ITEM_KIND_CHECK = 2,
+  VELOX_MENU_ITEM_KIND_ICON = 3,
+  VELOX_MENU_ITEM_KIND_SUBMENU = 4,
+} VeloxMenuItemKind;
 #endif
 
 typedef enum {
@@ -416,6 +432,39 @@ bool velox_menu_bar_append_submenu(
   VeloxMenuBarHandle *menu,
   VeloxSubmenuHandle *submenu
 );
+bool velox_menu_bar_append(
+  VeloxMenuBarHandle *menu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_menu_bar_prepend(
+  VeloxMenuBarHandle *menu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_menu_bar_insert(
+  VeloxMenuBarHandle *menu,
+  VeloxMenuItemKind kind,
+  void *item,
+  size_t position
+);
+bool velox_menu_bar_remove(
+  VeloxMenuBarHandle *menu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_menu_bar_remove_at(
+  VeloxMenuBarHandle *menu,
+  size_t position
+);
+bool velox_menu_bar_popup(
+  VeloxMenuBarHandle *menu,
+  VeloxWindowHandle *window,
+  double x,
+  double y,
+  bool has_position,
+  bool is_logical
+);
 bool velox_menu_bar_set_app_menu(VeloxMenuBarHandle *menu);
 
 VeloxSubmenuHandle *velox_submenu_new(const char *title, bool enabled);
@@ -426,10 +475,50 @@ VeloxSubmenuHandle *velox_submenu_new_with_id(
 );
 void velox_submenu_free(VeloxSubmenuHandle *submenu);
 const char *velox_submenu_identifier(VeloxSubmenuHandle *submenu);
+const char *velox_submenu_text(VeloxSubmenuHandle *submenu);
+bool velox_submenu_set_text(VeloxSubmenuHandle *submenu, const char *title);
+bool velox_submenu_is_enabled(VeloxSubmenuHandle *submenu);
+bool velox_submenu_set_enabled(VeloxSubmenuHandle *submenu, bool enabled);
+bool velox_submenu_set_native_icon(VeloxSubmenuHandle *submenu, const char *icon);
 bool velox_submenu_append_item(
   VeloxSubmenuHandle *submenu,
   VeloxMenuItemHandle *item
 );
+bool velox_submenu_append(
+  VeloxSubmenuHandle *submenu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_submenu_prepend(
+  VeloxSubmenuHandle *submenu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_submenu_insert(
+  VeloxSubmenuHandle *submenu,
+  VeloxMenuItemKind kind,
+  void *item,
+  size_t position
+);
+bool velox_submenu_remove(
+  VeloxSubmenuHandle *submenu,
+  VeloxMenuItemKind kind,
+  void *item
+);
+bool velox_submenu_remove_at(
+  VeloxSubmenuHandle *submenu,
+  size_t position
+);
+bool velox_submenu_popup(
+  VeloxSubmenuHandle *submenu,
+  VeloxWindowHandle *window,
+  double x,
+  double y,
+  bool has_position,
+  bool is_logical
+);
+bool velox_submenu_set_as_windows_menu_for_nsapp(VeloxSubmenuHandle *submenu);
+bool velox_submenu_set_as_help_menu_for_nsapp(VeloxSubmenuHandle *submenu);
 
 VeloxMenuItemHandle *velox_menu_item_new(
   const char *identifier,
@@ -444,6 +533,32 @@ const char *velox_menu_item_text(VeloxMenuItemHandle *item);
 bool velox_menu_item_set_text(VeloxMenuItemHandle *item, const char *title);
 bool velox_menu_item_set_accelerator(VeloxMenuItemHandle *item, const char *accelerator);
 const char *velox_menu_item_identifier(VeloxMenuItemHandle *item);
+
+VeloxIconMenuItemHandle *velox_icon_menu_item_new(
+  const char *identifier,
+  const char *title,
+  bool enabled,
+  const char *accelerator,
+  const char *native_icon
+);
+void velox_icon_menu_item_free(VeloxIconMenuItemHandle *item);
+const char *velox_icon_menu_item_identifier(VeloxIconMenuItemHandle *item);
+const char *velox_icon_menu_item_text(VeloxIconMenuItemHandle *item);
+bool velox_icon_menu_item_set_text(VeloxIconMenuItemHandle *item, const char *title);
+bool velox_icon_menu_item_set_enabled(VeloxIconMenuItemHandle *item, bool enabled);
+bool velox_icon_menu_item_is_enabled(VeloxIconMenuItemHandle *item);
+bool velox_icon_menu_item_set_accelerator(VeloxIconMenuItemHandle *item, const char *accelerator);
+bool velox_icon_menu_item_set_native_icon(VeloxIconMenuItemHandle *item, const char *icon);
+
+VeloxPredefinedMenuItemHandle *velox_predefined_menu_item_new(
+  const char *item,
+  const char *title,
+  const char *about_metadata
+);
+void velox_predefined_menu_item_free(VeloxPredefinedMenuItemHandle *item);
+const char *velox_predefined_menu_item_identifier(VeloxPredefinedMenuItemHandle *item);
+const char *velox_predefined_menu_item_text(VeloxPredefinedMenuItemHandle *item);
+bool velox_predefined_menu_item_set_text(VeloxPredefinedMenuItemHandle *item, const char *title);
 
 VeloxSeparatorHandle *velox_separator_new(void);
 void velox_separator_free(VeloxSeparatorHandle *separator);

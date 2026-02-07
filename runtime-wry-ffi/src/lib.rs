@@ -12,13 +12,16 @@ use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent
 
 #[cfg(target_os = "macos")]
 use muda::{
-    accelerator::Accelerator, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
+    about_metadata::AboutMetadata,
+    accelerator::Accelerator,
+    CheckMenuItem, ContextMenu, IconMenuItem, Menu, MenuEvent, MenuId, MenuItem, MenuItemKind,
+    NativeIcon,
     PredefinedMenuItem, Submenu,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map};
 use tao::{
-    dpi::{LogicalPosition, LogicalSize, Size},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition, Size},
     event::{
         ElementState, Event, MouseButton, MouseScrollDelta,
         WindowEvent as TaoWindowEvent,
@@ -35,7 +38,7 @@ use tao::{
 
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 #[cfg(target_os = "macos")]
-use tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS};
+use tao::platform::macos::{ActivationPolicy, EventLoopWindowTargetExtMacOS, WindowExtMacOS};
 use url::Url;
 use wry::{
     http::{
@@ -125,6 +128,7 @@ pub enum VeloxActivationPolicy {
 pub struct VeloxMenuBarHandle {
     menu: Menu,
     submenus: Vec<Rc<RefCell<Submenu>>>,
+    items: Vec<MenuItemKind>,
     identifier: CString,
 }
 
@@ -132,7 +136,7 @@ pub struct VeloxMenuBarHandle {
 pub struct VeloxSubmenuHandle {
     submenu: Rc<RefCell<Submenu>>,
     identifier: CString,
-    items: Vec<MenuItem>,
+    items: Vec<MenuItemKind>,
 }
 
 #[cfg(target_os = "macos")]
@@ -144,6 +148,18 @@ pub struct VeloxMenuItemHandle {
 #[cfg(target_os = "macos")]
 pub struct VeloxCheckMenuItemHandle {
     item: CheckMenuItem,
+    identifier: CString,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxIconMenuItemHandle {
+    item: IconMenuItem,
+    identifier: CString,
+}
+
+#[cfg(target_os = "macos")]
+pub struct VeloxPredefinedMenuItemHandle {
+    item: PredefinedMenuItem,
     identifier: CString,
 }
 
@@ -170,6 +186,16 @@ pub struct VeloxMenuItemHandle {
 
 #[cfg(not(target_os = "macos"))]
 pub struct VeloxCheckMenuItemHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxIconMenuItemHandle {
+    _private: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub struct VeloxPredefinedMenuItemHandle {
     _private: (),
 }
 
@@ -1270,6 +1296,24 @@ fn accelerator_from_ptr(ptr: *const c_char) -> Option<Accelerator> {
 }
 
 #[cfg(target_os = "macos")]
+fn native_icon_from_ptr(ptr: *const c_char) -> Option<NativeIcon> {
+    let value = opt_cstring(ptr)?;
+    let quoted = format!("\"{}\"", value);
+    serde_json::from_str(&quoted).ok()
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub enum VeloxMenuItemKind {
+    MenuItem = 0,
+    Predefined = 1,
+    Check = 2,
+    Icon = 3,
+    Submenu = 4,
+}
+
+#[cfg(target_os = "macos")]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_new() -> *mut VeloxMenuBarHandle {
     guard_panic(|| {
@@ -1278,6 +1322,7 @@ pub extern "C" fn velox_menu_bar_new() -> *mut VeloxMenuBarHandle {
         Box::into_raw(Box::new(VeloxMenuBarHandle {
             menu,
             submenus: Vec::new(),
+            items: Vec::new(),
             identifier,
         }))
     })
@@ -1293,6 +1338,7 @@ pub extern "C" fn velox_menu_bar_new_with_id(id: *const c_char) -> *mut VeloxMen
         Box::into_raw(Box::new(VeloxMenuBarHandle {
             menu,
             submenus: Vec::new(),
+            items: Vec::new(),
             identifier,
         }))
     })
@@ -1335,10 +1381,289 @@ pub extern "C" fn velox_menu_bar_append_submenu(
 
     if result.is_ok() {
         menu.submenus.push(submenu.submenu.clone());
+        menu
+            .items
+            .push(MenuItemKind::Submenu(submenu.submenu.borrow().clone()));
         true
     } else {
         false
     }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_append(
+    menu: *mut VeloxMenuBarHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.append(&item.item).is_ok() {
+                menu.items.push(MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.append(&item.item).is_ok() {
+                menu.items.push(MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.append(&item.item).is_ok() {
+                menu.items.push(MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.append(&item.item).is_ok() {
+                menu.items.push(MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if menu.menu.append(&*submenu_ref).is_ok() {
+                menu.submenus.push(item.submenu.clone());
+                menu.items.push(MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_prepend(
+    menu: *mut VeloxMenuBarHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.prepend(&item.item).is_ok() {
+                menu.items.insert(0, MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.prepend(&item.item).is_ok() {
+                menu.items.insert(0, MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.prepend(&item.item).is_ok() {
+                menu.items.insert(0, MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.prepend(&item.item).is_ok() {
+                menu.items.insert(0, MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if menu.menu.prepend(&*submenu_ref).is_ok() {
+                menu.submenus.push(item.submenu.clone());
+                menu.items.insert(0, MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_insert(
+    menu: *mut VeloxMenuBarHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+    position: usize,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+
+    let insert_index = position.min(menu.items.len());
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.insert(&item.item, position).is_ok() {
+                menu.items.insert(insert_index, MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.insert(&item.item, position).is_ok() {
+                menu.items.insert(insert_index, MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.insert(&item.item, position).is_ok() {
+                menu.items.insert(insert_index, MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if menu.menu.insert(&item.item, position).is_ok() {
+                menu.items.insert(insert_index, MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if menu.menu.insert(&*submenu_ref, position).is_ok() {
+                menu.submenus.push(item.submenu.clone());
+                menu.items.insert(insert_index, MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_remove(
+    menu: *mut VeloxMenuBarHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            menu.menu.remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            menu.menu.remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            menu.menu.remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            menu.menu.remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            menu.menu.remove(&*submenu_ref).is_ok()
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_remove_at(
+    menu: *mut VeloxMenuBarHandle,
+    position: usize,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_mut() }) else {
+        return false;
+    };
+    menu.menu.remove_at(position).is_some()
 }
 
 #[cfg(target_os = "macos")]
@@ -1349,6 +1674,38 @@ pub extern "C" fn velox_menu_bar_set_app_menu(menu: *mut VeloxMenuBarHandle) -> 
     };
     menu.menu.init_for_nsapp();
     true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_popup(
+    menu: *mut VeloxMenuBarHandle,
+    window: *mut VeloxWindowHandle,
+    x: f64,
+    y: f64,
+    has_position: bool,
+    is_logical: bool,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_ref() }) else {
+        return false;
+    };
+    let Some(window) = (unsafe { window.as_ref() }) else {
+        return false;
+    };
+
+    let position = if has_position {
+        if is_logical {
+            Some(muda::dpi::Position::Logical(LogicalPosition { x, y }))
+        } else {
+            let px = x.round() as i32;
+            let py = y.round() as i32;
+            Some(muda::dpi::Position::Physical(PhysicalPosition { x: px, y: py }))
+        }
+    } else {
+        None
+    };
+
+    unsafe { menu.menu.show_context_menu_for_nsview(window.window.ns_view(), position) }
 }
 
 #[cfg(target_os = "macos")]
@@ -1409,6 +1766,127 @@ pub extern "C" fn velox_submenu_identifier(submenu: *mut VeloxSubmenuHandle) -> 
 
 #[cfg(target_os = "macos")]
 #[no_mangle]
+pub extern "C" fn velox_submenu_text(submenu: *mut VeloxSubmenuHandle) -> *const c_char {
+    guard_panic_value(|| {
+        let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+            return ptr::null();
+        };
+        write_string_to_buffer(&TITLE_BUFFER, submenu.submenu.borrow().text())
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_text(
+    submenu: *mut VeloxSubmenuHandle,
+    title: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+            return false;
+        };
+        let text = opt_cstring(title).unwrap_or_default();
+        submenu.submenu.borrow_mut().set_text(text);
+        true
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_is_enabled(submenu: *mut VeloxSubmenuHandle) -> bool {
+    guard_panic_bool(|| {
+        let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+            return false;
+        };
+        submenu.submenu.borrow().is_enabled()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_enabled(
+    submenu: *mut VeloxSubmenuHandle,
+    enabled: bool,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    submenu.submenu.borrow_mut().set_enabled(enabled);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_native_icon(
+    submenu: *mut VeloxSubmenuHandle,
+    native_icon: *const c_char,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    let icon = native_icon_from_ptr(native_icon);
+    submenu.submenu.borrow_mut().set_native_icon(icon);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_as_windows_menu_for_nsapp(
+    submenu: *mut VeloxSubmenuHandle,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return false;
+    };
+    submenu.submenu.borrow().set_as_windows_menu_for_nsapp();
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_as_help_menu_for_nsapp(
+    submenu: *mut VeloxSubmenuHandle,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return false;
+    };
+    submenu.submenu.borrow().set_as_help_menu_for_nsapp();
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_popup(
+    submenu: *mut VeloxSubmenuHandle,
+    window: *mut VeloxWindowHandle,
+    x: f64,
+    y: f64,
+    has_position: bool,
+    is_logical: bool,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return false;
+    };
+    let Some(window) = (unsafe { window.as_ref() }) else {
+        return false;
+    };
+
+    let position = if has_position {
+        if is_logical {
+            Some(muda::dpi::Position::Logical(LogicalPosition { x, y }))
+        } else {
+            let px = x.round() as i32;
+            let py = y.round() as i32;
+            Some(muda::dpi::Position::Physical(PhysicalPosition { x: px, y: py }))
+        }
+    } else {
+        None
+    };
+
+    unsafe { submenu.submenu.borrow().show_context_menu_for_nsview(window.window.ns_view(), position) }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
 pub extern "C" fn velox_submenu_append_item(
     submenu: *mut VeloxSubmenuHandle,
     item: *mut VeloxMenuItemHandle,
@@ -1421,11 +1899,284 @@ pub extern "C" fn velox_submenu_append_item(
     };
 
     if submenu.submenu.borrow().append(&item.item).is_ok() {
-        submenu.items.push(item.item.clone());
+        submenu.items.push(MenuItemKind::MenuItem(item.item.clone()));
         true
     } else {
         false
     }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_append(
+    submenu: *mut VeloxSubmenuHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().append(&item.item).is_ok() {
+                submenu.items.push(MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().append(&item.item).is_ok() {
+                submenu.items.push(MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().append(&item.item).is_ok() {
+                submenu.items.push(MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().append(&item.item).is_ok() {
+                submenu.items.push(MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if submenu.submenu.borrow().append(&*submenu_ref).is_ok() {
+                submenu.items.push(MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_prepend(
+    submenu: *mut VeloxSubmenuHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().prepend(&item.item).is_ok() {
+                submenu.items.insert(0, MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().prepend(&item.item).is_ok() {
+                submenu.items.insert(0, MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().prepend(&item.item).is_ok() {
+                submenu.items.insert(0, MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().prepend(&item.item).is_ok() {
+                submenu.items.insert(0, MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if submenu.submenu.borrow().prepend(&*submenu_ref).is_ok() {
+                submenu.items.insert(0, MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_insert(
+    submenu: *mut VeloxSubmenuHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+    position: usize,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    let insert_index = position.min(submenu.items.len());
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().insert(&item.item, position).is_ok() {
+                submenu.items.insert(insert_index, MenuItemKind::MenuItem(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().insert(&item.item, position).is_ok() {
+                submenu.items.insert(insert_index, MenuItemKind::Predefined(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().insert(&item.item, position).is_ok() {
+                submenu.items.insert(insert_index, MenuItemKind::Check(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            if submenu.submenu.borrow().insert(&item.item, position).is_ok() {
+                submenu.items.insert(insert_index, MenuItemKind::Icon(item.item.clone()));
+                true
+            } else {
+                false
+            }
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            if submenu.submenu.borrow().insert(&*submenu_ref, position).is_ok() {
+                submenu.items.insert(insert_index, MenuItemKind::Submenu(submenu_ref.clone()));
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_remove(
+    submenu: *mut VeloxSubmenuHandle,
+    kind: VeloxMenuItemKind,
+    item: *mut c_void,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+
+    match kind {
+        VeloxMenuItemKind::MenuItem => {
+            let Some(item) = (unsafe { (item as *mut VeloxMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            submenu.submenu.borrow().remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Predefined => {
+            let Some(item) = (unsafe { (item as *mut VeloxPredefinedMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            submenu.submenu.borrow().remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Check => {
+            let Some(item) = (unsafe { (item as *mut VeloxCheckMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            submenu.submenu.borrow().remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Icon => {
+            let Some(item) = (unsafe { (item as *mut VeloxIconMenuItemHandle).as_ref() }) else {
+                return false;
+            };
+            submenu.submenu.borrow().remove(&item.item).is_ok()
+        }
+        VeloxMenuItemKind::Submenu => {
+            let Some(item) = (unsafe { (item as *mut VeloxSubmenuHandle).as_ref() }) else {
+                return false;
+            };
+            let submenu_ref = item.submenu.borrow();
+            submenu.submenu.borrow().remove(&*submenu_ref).is_ok()
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_remove_at(
+    submenu: *mut VeloxSubmenuHandle,
+    position: usize,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_mut() }) else {
+        return false;
+    };
+    submenu.submenu.borrow().remove_at(position).is_some()
 }
 
 #[cfg(target_os = "macos")]
@@ -1533,6 +2284,263 @@ pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> 
     item.identifier.as_ptr()
 }
 
+// MARK: - Icon Menu Item
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_new(
+    id: *const c_char,
+    title: *const c_char,
+    enabled: bool,
+    accelerator: *const c_char,
+    native_icon: *const c_char,
+) -> *mut VeloxIconMenuItemHandle {
+    guard_panic(|| {
+        let title = opt_cstring(title).unwrap_or_default();
+        let accelerator = accelerator_from_ptr(accelerator);
+        let native_icon = native_icon_from_ptr(native_icon);
+        let item = if let Some(id) = opt_cstring(id) {
+            IconMenuItem::with_id_and_native_icon(
+                MenuId::new(id.clone()),
+                title,
+                enabled,
+                native_icon,
+                accelerator,
+            )
+        } else {
+            IconMenuItem::with_native_icon(title, enabled, native_icon, accelerator)
+        };
+        let identifier = CString::new(item.id().as_ref()).expect("icon menu item id contains null byte");
+        Box::into_raw(Box::new(VeloxIconMenuItemHandle { item, identifier }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_free(item: *mut VeloxIconMenuItemHandle) {
+    if !item.is_null() {
+        unsafe { drop(Box::from_raw(item)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_identifier(item: *mut VeloxIconMenuItemHandle) -> *const c_char {
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return ptr::null();
+    };
+    item.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_text(item: *mut VeloxIconMenuItemHandle) -> *const c_char {
+    guard_panic_value(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return ptr::null();
+        };
+        write_string_to_buffer(&TITLE_BUFFER, item.item.text())
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_set_text(
+    item: *mut VeloxIconMenuItemHandle,
+    title: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        let text = opt_cstring(title).unwrap_or_default();
+        item.item.set_text(text);
+        true
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_is_enabled(item: *mut VeloxIconMenuItemHandle) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return false;
+        };
+        item.item.is_enabled()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_set_enabled(
+    item: *mut VeloxIconMenuItemHandle,
+    enabled: bool,
+) -> bool {
+    let Some(item) = (unsafe { item.as_mut() }) else {
+        return false;
+    };
+    item.item.set_enabled(enabled);
+    true
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_set_accelerator(
+    item: *mut VeloxIconMenuItemHandle,
+    accelerator: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        item.item
+            .set_accelerator(accelerator_from_ptr(accelerator))
+            .is_ok()
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_icon_menu_item_set_native_icon(
+    item: *mut VeloxIconMenuItemHandle,
+    native_icon: *const c_char,
+) -> bool {
+    let Some(item) = (unsafe { item.as_mut() }) else {
+        return false;
+    };
+    let icon = native_icon_from_ptr(native_icon);
+    item.item.set_native_icon(icon);
+    true
+}
+
+// MARK: - Predefined Menu Item
+
+#[cfg(target_os = "macos")]
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VeloxAboutMetadata {
+    name: Option<String>,
+    version: Option<String>,
+    short_version: Option<String>,
+    authors: Option<Vec<String>>,
+    comments: Option<String>,
+    copyright: Option<String>,
+    license: Option<String>,
+    website: Option<String>,
+    website_label: Option<String>,
+    credits: Option<String>,
+    #[serde(default)]
+    icon: Option<serde_json::Value>,
+}
+
+#[cfg(target_os = "macos")]
+fn about_metadata_from_json(json: *const c_char) -> Option<AboutMetadata> {
+    let value = opt_cstring(json)?;
+    let parsed: VeloxAboutMetadata = serde_json::from_str(&value).ok()?;
+    let _ = parsed.icon;
+    Some(AboutMetadata {
+        name: parsed.name,
+        version: parsed.version,
+        short_version: parsed.short_version,
+        authors: parsed.authors,
+        comments: parsed.comments,
+        copyright: parsed.copyright,
+        license: parsed.license,
+        website: parsed.website,
+        website_label: parsed.website_label,
+        credits: parsed.credits,
+        icon: None,
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_predefined_menu_item_new(
+    item_type: *const c_char,
+    text: *const c_char,
+    about_json: *const c_char,
+) -> *mut VeloxPredefinedMenuItemHandle {
+    guard_panic(|| {
+        let item_type = opt_cstring(item_type).unwrap_or_default();
+        let text = opt_cstring(text);
+        let item = match item_type.as_str() {
+            "Separator" => PredefinedMenuItem::separator(),
+            "Copy" => PredefinedMenuItem::copy(text.as_deref()),
+            "Cut" => PredefinedMenuItem::cut(text.as_deref()),
+            "Paste" => PredefinedMenuItem::paste(text.as_deref()),
+            "SelectAll" => PredefinedMenuItem::select_all(text.as_deref()),
+            "Undo" => PredefinedMenuItem::undo(text.as_deref()),
+            "Redo" => PredefinedMenuItem::redo(text.as_deref()),
+            "Minimize" => PredefinedMenuItem::minimize(text.as_deref()),
+            "Maximize" => PredefinedMenuItem::maximize(text.as_deref()),
+            "Fullscreen" => PredefinedMenuItem::fullscreen(text.as_deref()),
+            "Hide" => PredefinedMenuItem::hide(text.as_deref()),
+            "HideOthers" => PredefinedMenuItem::hide_others(text.as_deref()),
+            "ShowAll" => PredefinedMenuItem::show_all(text.as_deref()),
+            "CloseWindow" => PredefinedMenuItem::close_window(text.as_deref()),
+            "Quit" => PredefinedMenuItem::quit(text.as_deref()),
+            "Services" => PredefinedMenuItem::services(text.as_deref()),
+            "About" => {
+                let metadata = about_metadata_from_json(about_json);
+                PredefinedMenuItem::about(text.as_deref(), metadata)
+            }
+            "BringAllToFront" => PredefinedMenuItem::bring_all_to_front(text.as_deref()),
+            _ => PredefinedMenuItem::separator(),
+        };
+        let identifier = CString::new(item.id().as_ref())
+            .expect("predefined menu item id contains null byte");
+        Box::into_raw(Box::new(VeloxPredefinedMenuItemHandle { item, identifier }))
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_predefined_menu_item_free(item: *mut VeloxPredefinedMenuItemHandle) {
+    if !item.is_null() {
+        unsafe { drop(Box::from_raw(item)) };
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_predefined_menu_item_identifier(
+    item: *mut VeloxPredefinedMenuItemHandle,
+) -> *const c_char {
+    let Some(item) = (unsafe { item.as_ref() }) else {
+        return ptr::null();
+    };
+    item.identifier.as_ptr()
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_predefined_menu_item_text(
+    item: *mut VeloxPredefinedMenuItemHandle,
+) -> *const c_char {
+    guard_panic_value(|| {
+        let Some(item) = (unsafe { item.as_ref() }) else {
+            return ptr::null();
+        };
+        write_string_to_buffer(&TITLE_BUFFER, item.item.text())
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[no_mangle]
+pub extern "C" fn velox_predefined_menu_item_set_text(
+    item: *mut VeloxPredefinedMenuItemHandle,
+    title: *const c_char,
+) -> bool {
+    guard_panic_bool(|| {
+        let Some(item) = (unsafe { item.as_mut() }) else {
+            return false;
+        };
+        let text = opt_cstring(title).unwrap_or_default();
+        item.item.set_text(text);
+        true
+    })
+}
+
 // MARK: - Separator Menu Item
 
 #[cfg(target_os = "macos")]
@@ -1574,7 +2582,12 @@ pub extern "C" fn velox_submenu_append_separator(
     let Some(separator) = (unsafe { separator.as_ref() }) else {
         return false;
     };
-    submenu.submenu.borrow().append(&separator.item).is_ok()
+    if submenu.submenu.borrow().append(&separator.item).is_ok() {
+        submenu.items.push(MenuItemKind::Predefined(separator.item.clone()));
+        true
+    } else {
+        false
+    }
 }
 
 // MARK: - Check Menu Item
@@ -1721,7 +2734,12 @@ pub extern "C" fn velox_submenu_append_check_item(
     let Some(item) = (unsafe { item.as_ref() }) else {
         return false;
     };
-    submenu.submenu.borrow().append(&item.item).is_ok()
+    if submenu.submenu.borrow().append(&item.item).is_ok() {
+        submenu.items.push(MenuItemKind::Check(item.item.clone()));
+        true
+    } else {
+        false
+    }
 }
 
 #[cfg(target_os = "macos")]

@@ -392,6 +392,8 @@ public final class VeloxAppBuilder {
         continue
       }
 
+      eventManager.register(window: window, label: windowConfig.label)
+
       // Create webview if URL is specified
       var webview: VeloxRuntimeWry.Webview?
       if windowConfig.url != nil {

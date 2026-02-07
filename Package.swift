@@ -57,6 +57,14 @@ let package = Package(
       name: "VeloxPluginOpener",
       targets: ["VeloxPluginOpener"]
     ),
+    .library(
+      name: "VeloxPluginResources",
+      targets: ["VeloxPluginResources"]
+    ),
+    .library(
+      name: "VeloxPluginMenu",
+      targets: ["VeloxPluginMenu"]
+    ),
     .executable(
       name: "HelloWorld",
       targets: ["HelloWorld"]
@@ -239,6 +247,16 @@ let package = Package(
       name: "VeloxPluginOpener",
       dependencies: ["VeloxRuntime"],
       path: "Sources/VeloxPluginOpener"
+    ),
+    .target(
+      name: "VeloxPluginResources",
+      dependencies: ["VeloxRuntime"],
+      path: "Sources/VeloxPluginResources"
+    ),
+    .target(
+      name: "VeloxPluginMenu",
+      dependencies: ["VeloxRuntime", "VeloxRuntimeWry"],
+      path: "Sources/VeloxPluginMenu"
     ),
     .target(
       name: "VeloxPlugins",

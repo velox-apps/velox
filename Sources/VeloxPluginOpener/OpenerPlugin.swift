@@ -12,20 +12,20 @@ import AppKit
 /// Built-in Opener plugin for opening files and URLs in external applications.
 ///
 /// This plugin exposes the following commands:
-/// - `plugin:opener|openUrl` - Open a URL in the default browser
-/// - `plugin:opener|openPath` - Open a file/folder with its default application
-/// - `plugin:opener|revealPath` - Reveal a file in Finder/Explorer
+/// - `plugin:opener|open_url` - Open a URL in the default browser
+/// - `plugin:opener|open_path` - Open a file/folder with its default application
+/// - `plugin:opener|reveal_path` - Reveal a file in Finder/Explorer
 ///
 /// Example frontend usage:
 /// ```javascript
 /// // Open URL in browser
-/// await invoke('plugin:opener|openUrl', { url: 'https://example.com' });
+/// await invoke('plugin:opener|open_url', { url: 'https://example.com' });
 ///
 /// // Open file with default app
-/// await invoke('plugin:opener|openPath', { path: '/path/to/document.pdf' });
+/// await invoke('plugin:opener|open_path', { path: '/path/to/document.pdf' });
 ///
 /// // Reveal in Finder
-/// await invoke('plugin:opener|revealPath', { path: '/path/to/file.txt' });
+/// await invoke('plugin:opener|reveal_path', { path: '/path/to/file.txt' });
 /// ```
 public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "opener"
@@ -35,8 +35,7 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
   public func setup(context: PluginSetupContext) throws {
     let commands = context.commands(for: name)
 
-    // Open URL in default browser
-    commands.register("openUrl", args: OpenUrlArgs.self, returning: Bool.self) { args, _ in
+    let openUrlHandler: (OpenUrlArgs) throws -> Bool = { args in
       guard let url = URL(string: args.url) else {
         throw CommandError(code: "InvalidUrl", message: "Invalid URL: \(args.url)")
       }
@@ -48,8 +47,16 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       #endif
     }
 
+    // Open URL in default browser
+    commands.register("openUrl", args: OpenUrlArgs.self, returning: Bool.self) { args, _ in
+      try openUrlHandler(args)
+    }
+    commands.register("open_url", args: OpenUrlArgs.self, returning: Bool.self) { args, _ in
+      try openUrlHandler(args)
+    }
+
     // Open file/folder with default application
-    commands.register("openPath", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+    let openPathHandler: (OpenPathArgs) throws -> Bool = { args in
       let url = URL(fileURLWithPath: args.path)
 
       #if os(macOS)
@@ -72,9 +79,15 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       return false
       #endif
     }
+    commands.register("openPath", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+      try openPathHandler(args)
+    }
+    commands.register("open_path", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+      try openPathHandler(args)
+    }
 
     // Reveal file in Finder
-    commands.register("revealPath", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+    let revealPathHandler: (OpenPathArgs) throws -> Bool = { args in
       let url = URL(fileURLWithPath: args.path)
 
       #if os(macOS)
@@ -84,9 +97,15 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       return false
       #endif
     }
+    commands.register("revealPath", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+      try revealPathHandler(args)
+    }
+    commands.register("reveal_path", args: OpenPathArgs.self, returning: Bool.self) { args, _ in
+      try revealPathHandler(args)
+    }
 
     // Open file with specific application
-    commands.register("openWith", args: OpenWithArgs.self, returning: Bool.self) { args, _ in
+    let openWithHandler: (OpenWithArgs) throws -> Bool = { args in
       let fileUrl = URL(fileURLWithPath: args.path)
       let appUrl = URL(fileURLWithPath: args.app)
 
@@ -104,9 +123,15 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       return false
       #endif
     }
+    commands.register("openWith", args: OpenWithArgs.self, returning: Bool.self) { args, _ in
+      try openWithHandler(args)
+    }
+    commands.register("open_with", args: OpenWithArgs.self, returning: Bool.self) { args, _ in
+      try openWithHandler(args)
+    }
 
     // Get default application for file
-    commands.register("getDefaultApp", args: OpenPathArgs.self, returning: String?.self) { args, _ in
+    let getDefaultAppHandler: (OpenPathArgs) throws -> String? = { args in
       let url = URL(fileURLWithPath: args.path)
 
       #if os(macOS)
@@ -115,6 +140,12 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       }
       #endif
       return nil
+    }
+    commands.register("getDefaultApp", args: OpenPathArgs.self, returning: String?.self) { args, _ in
+      try getDefaultAppHandler(args)
+    }
+    commands.register("get_default_app", args: OpenPathArgs.self, returning: String?.self) { args, _ in
+      try getDefaultAppHandler(args)
     }
   }
 

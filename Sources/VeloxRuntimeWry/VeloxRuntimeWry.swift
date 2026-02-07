@@ -1436,6 +1436,11 @@ public extension VeloxRuntimeWry {
       let box = Unmanaged<EventLoopCallback>.fromOpaque(userData).takeUnretainedValue()
       let json = event.map { String(cString: $0) } ?? "{}"
       let parsedEvent = Event(fromJSON: json)
+#if os(macOS)
+      if case .menuEvent(let menuId) = parsedEvent {
+        MenuEventMonitor.shared.emit(menuId: menuId)
+      }
+#endif
       let flow = box.handler(parsedEvent)
       return VeloxRuntimeWryFFI.VeloxEventLoopControlFlow(rawValue: UInt32(flow.rawValue))
     }
@@ -1483,7 +1488,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// Handle wrapper mirroring Tao's `Window`.
-  final class Window {
+  public final class Window {
     fileprivate let raw: UnsafeMutablePointer<VeloxWindowHandle>
     private weak var owner: Runtime?
 
@@ -1544,6 +1549,10 @@ public extension VeloxRuntimeWry {
 
     deinit {
       velox_window_free(raw)
+    }
+
+    fileprivate var rawPointer: UnsafeMutablePointer<VeloxWindowHandle> {
+      raw
     }
 
     fileprivate var taoIdentifier: String {
@@ -2755,10 +2764,45 @@ public final class EventLoopProxyAdapter: VeloxEventLoopProxy {
 }
 
 #if os(macOS)
+public final class MenuEventMonitor: @unchecked Sendable {
+  public typealias Handler = @Sendable (String) -> Void
+
+  public static let shared = MenuEventMonitor()
+
+  private var handlers: [UUID: Handler] = [:]
+  private let lock = NSLock()
+
+  private init() {}
+
+  @discardableResult
+  public func addHandler(_ handler: @escaping Handler) -> UUID {
+    let token = UUID()
+    lock.lock()
+    handlers[token] = handler
+    lock.unlock()
+    return token
+  }
+
+  public func removeHandler(_ token: UUID) {
+    lock.lock()
+    handlers.removeValue(forKey: token)
+    lock.unlock()
+  }
+
+  fileprivate func emit(menuId: String) {
+    lock.lock()
+    let callbacks = handlers.values
+    lock.unlock()
+    for callback in callbacks {
+      callback(menuId)
+    }
+  }
+}
+
 public extension VeloxRuntimeWry {
-  final class MenuBar: @unchecked Sendable {
+  public final class MenuBar: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxMenuBarHandle>
-    private var retainedSubmenus: [Submenu] = []
+    private var retainedItems: [AnyObject] = []
 
     public let identifier: String
 
@@ -2788,15 +2832,127 @@ public extension VeloxRuntimeWry {
     }
 
     @discardableResult
+    public func append(_ item: MenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
+    }
+
+    @discardableResult
+    public func append(_ item: CheckMenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func append(_ item: IconMenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func append(_ item: PredefinedMenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
     public func append(_ submenu: Submenu) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
+    }
+
+    @discardableResult
+    public func prepend(_ item: MenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: CheckMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: IconMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: PredefinedMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ submenu: Submenu) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
+    }
+
+    @discardableResult
+    public func insert(_ item: MenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: CheckMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: IconMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: PredefinedMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ submenu: Submenu, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu, position: position)
+    }
+
+    @discardableResult
+    public func remove(_ item: MenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: CheckMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: IconMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: PredefinedMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ submenu: Submenu) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
+    }
+
+    @discardableResult
+    public func remove(at position: Int) -> Bool {
       guard Thread.isMainThread else {
         return false
       }
-      guard velox_menu_bar_append_submenu(raw, submenu.raw) else {
+      let success = velox_menu_bar_remove_at(raw, Int(position))
+      if success, position >= 0, position < retainedItems.count {
+        retainedItems.remove(at: position)
+      }
+      return success
+    }
+
+    @discardableResult
+    public func popup(in window: Window, at position: (x: Double, y: Double, isLogical: Bool)? = nil) -> Bool {
+      guard Thread.isMainThread else {
         return false
       }
-      retainedSubmenus.append(submenu)
-      return true
+      let hasPosition = position != nil
+      let x = position?.x ?? 0
+      let y = position?.y ?? 0
+      let isLogical = position?.isLogical ?? false
+      return velox_menu_bar_popup(raw, window.rawPointer, x, y, hasPosition, isLogical)
     }
 
     @discardableResult
@@ -2806,9 +2962,62 @@ public extension VeloxRuntimeWry {
       }
       return velox_menu_bar_set_app_menu(raw)
     }
+
+    private func appendRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_menu_bar_append(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.append(item)
+      }
+      return success
+    }
+
+    private func prependRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_menu_bar_prepend(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.insert(item, at: 0)
+      }
+      return success
+    }
+
+    private func insertRaw(kind: VeloxMenuItemKind, item: AnyObject, position: Int) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_menu_bar_insert(raw, kind, ptr, Int(position))
+      }
+      if success {
+        let index = max(0, min(position, retainedItems.count))
+        retainedItems.insert(item, at: index)
+      }
+      return success
+    }
+
+    private func removeRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_menu_bar_remove(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.removeAll { $0 === item }
+      }
+      return success
+    }
   }
 
-  final class Submenu: @unchecked Sendable {
+  public final class Submenu: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxSubmenuHandle>
     private var retainedItems: [AnyObject] = []
 
@@ -2841,28 +3050,87 @@ public extension VeloxRuntimeWry {
       velox_submenu_free(raw)
     }
 
+    public func text() -> String {
+      guard Thread.isMainThread else {
+        return ""
+      }
+      return string(from: velox_submenu_text(raw))
+    }
+
     @discardableResult
-    public func append(_ item: MenuItem) -> Bool {
+    public func setText(_ title: String) -> Bool {
       guard Thread.isMainThread else {
         return false
       }
-      guard velox_submenu_append_item(raw, item.raw) else {
+      return title.withCString { pointer in
+        velox_submenu_set_text(raw, pointer)
+      }
+    }
+
+    public func isEnabled() -> Bool {
+      guard Thread.isMainThread else {
         return false
       }
-      retainedItems.append(item)
-      return true
+      return velox_submenu_is_enabled(raw)
+    }
+
+    @discardableResult
+    public func setEnabled(_ isEnabled: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_submenu_set_enabled(raw, isEnabled)
+    }
+
+    @discardableResult
+    public func setNativeIcon(_ icon: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return withOptionalCString(icon ?? "") { pointer in
+        velox_submenu_set_native_icon(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func setAsWindowsMenuForNSApp() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_submenu_set_as_windows_menu_for_nsapp(raw)
+    }
+
+    @discardableResult
+    public func setAsHelpMenuForNSApp() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_submenu_set_as_help_menu_for_nsapp(raw)
+    }
+
+    @discardableResult
+    public func append(_ item: MenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
     }
 
     @discardableResult
     public func append(_ item: CheckMenuItem) -> Bool {
-      guard Thread.isMainThread else {
-        return false
-      }
-      guard velox_submenu_append_check_item(raw, item.raw) else {
-        return false
-      }
-      retainedItems.append(item)
-      return true
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func append(_ item: IconMenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func append(_ item: PredefinedMenuItem) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
+    public func append(_ submenu: Submenu) -> Bool {
+      appendRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
     }
 
     @discardableResult
@@ -2877,6 +3145,93 @@ public extension VeloxRuntimeWry {
       return true
     }
 
+    @discardableResult
+    public func prepend(_ item: MenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: CheckMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: IconMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ item: PredefinedMenuItem) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
+    public func prepend(_ submenu: Submenu) -> Bool {
+      prependRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
+    }
+
+    @discardableResult
+    public func insert(_ item: MenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: CheckMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: IconMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ item: PredefinedMenuItem, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item, position: position)
+    }
+
+    @discardableResult
+    public func insert(_ submenu: Submenu, position: Int) -> Bool {
+      insertRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu, position: position)
+    }
+
+    @discardableResult
+    public func remove(_ item: MenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_MENU_ITEM, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: CheckMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_CHECK, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: IconMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_ICON, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ item: PredefinedMenuItem) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_PREDEFINED, item: item)
+    }
+
+    @discardableResult
+    public func remove(_ submenu: Submenu) -> Bool {
+      removeRaw(kind: VELOX_MENU_ITEM_KIND_SUBMENU, item: submenu)
+    }
+
+    @discardableResult
+    public func remove(at position: Int) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = velox_submenu_remove_at(raw, Int(position))
+      if success, position >= 0, position < retainedItems.count {
+        retainedItems.remove(at: position)
+      }
+      return success
+    }
+
     /// Convenience method to append a separator
     @discardableResult
     public func appendSeparator() -> Bool {
@@ -2885,9 +3240,74 @@ public extension VeloxRuntimeWry {
       }
       return append(separator)
     }
+
+    @discardableResult
+    public func popup(in window: Window, at position: (x: Double, y: Double, isLogical: Bool)? = nil) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let hasPosition = position != nil
+      let x = position?.x ?? 0
+      let y = position?.y ?? 0
+      let isLogical = position?.isLogical ?? false
+      return velox_submenu_popup(raw, window.rawPointer, x, y, hasPosition, isLogical)
+    }
+
+    private func appendRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_submenu_append(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.append(item)
+      }
+      return success
+    }
+
+    private func prependRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_submenu_prepend(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.insert(item, at: 0)
+      }
+      return success
+    }
+
+    private func insertRaw(kind: VeloxMenuItemKind, item: AnyObject, position: Int) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_submenu_insert(raw, kind, ptr, Int(position))
+      }
+      if success {
+        let index = max(0, min(position, retainedItems.count))
+        retainedItems.insert(item, at: index)
+      }
+      return success
+    }
+
+    private func removeRaw(kind: VeloxMenuItemKind, item: AnyObject) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      let success = withRawPointer(item) { ptr in
+        velox_submenu_remove(raw, kind, ptr)
+      }
+      if success {
+        retainedItems.removeAll { $0 === item }
+      }
+      return success
+    }
   }
 
-  final class MenuItem: @unchecked Sendable {
+  public final class MenuItem: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxMenuItemHandle>
     public let identifier: String
 
@@ -2968,7 +3388,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// A separator menu item that displays a horizontal line in a menu
-  final class MenuSeparator: @unchecked Sendable {
+  public final class MenuSeparator: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxSeparatorHandle>
     public let identifier: String
 
@@ -2991,7 +3411,7 @@ public extension VeloxRuntimeWry {
   }
 
   /// A menu item with a checkmark that can be toggled
-  final class CheckMenuItem: @unchecked Sendable {
+  public final class CheckMenuItem: @unchecked Sendable {
     fileprivate let raw: UnsafeMutablePointer<VeloxCheckMenuItemHandle>
     public let identifier: String
 
@@ -3087,6 +3507,230 @@ public extension VeloxRuntimeWry {
     }
   }
 
+  public final class IconMenuItem: @unchecked Sendable {
+    fileprivate let raw: UnsafeMutablePointer<VeloxIconMenuItemHandle>
+    public let identifier: String
+
+    public init?(
+      identifier: String? = nil,
+      title: String,
+      nativeIcon: String,
+      isEnabled: Bool = true,
+      accelerator: String? = nil
+    ) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let handle: UnsafeMutablePointer<VeloxIconMenuItemHandle>? = title.withCString { titlePointer in
+        withOptionalCString(identifier ?? "") { idPointer in
+          withOptionalCString(accelerator ?? "") { acceleratorPointer in
+            nativeIcon.withCString { iconPointer in
+              velox_icon_menu_item_new(idPointer, titlePointer, isEnabled, acceleratorPointer, iconPointer)
+            }
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_icon_menu_item_identifier(handle))
+    }
+
+    deinit {
+      velox_icon_menu_item_free(raw)
+    }
+
+    public func title() -> String {
+      guard Thread.isMainThread else {
+        return ""
+      }
+      return string(from: velox_icon_menu_item_text(raw))
+    }
+
+    @discardableResult
+    public func setTitle(_ title: String) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return title.withCString { pointer in
+        velox_icon_menu_item_set_text(raw, pointer)
+      }
+    }
+
+    @discardableResult
+    public func setEnabled(_ isEnabled: Bool) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_icon_menu_item_set_enabled(raw, isEnabled)
+    }
+
+    public func isEnabled() -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return velox_icon_menu_item_is_enabled(raw)
+    }
+
+    @discardableResult
+    public func setAccelerator(_ accelerator: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      if let accelerator {
+        return accelerator.withCString { pointer in
+          velox_icon_menu_item_set_accelerator(raw, pointer)
+        }
+      }
+      return velox_icon_menu_item_set_accelerator(raw, nil)
+    }
+
+    @discardableResult
+    public func setNativeIcon(_ icon: String?) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return withOptionalCString(icon ?? "") { pointer in
+        velox_icon_menu_item_set_native_icon(raw, pointer)
+      }
+    }
+  }
+
+  public final class PredefinedMenuItem: @unchecked Sendable {
+    public enum Item: String, Sendable {
+      case separator = "Separator"
+      case copy = "Copy"
+      case cut = "Cut"
+      case paste = "Paste"
+      case selectAll = "SelectAll"
+      case undo = "Undo"
+      case redo = "Redo"
+      case minimize = "Minimize"
+      case maximize = "Maximize"
+      case fullscreen = "Fullscreen"
+      case hide = "Hide"
+      case hideOthers = "HideOthers"
+      case showAll = "ShowAll"
+      case closeWindow = "CloseWindow"
+      case quit = "Quit"
+      case services = "Services"
+      case about = "About"
+      case bringAllToFront = "BringAllToFront"
+    }
+
+    public struct AboutMetadata: Codable, Sendable {
+      public var name: String?
+      public var version: String?
+      public var shortVersion: String?
+      public var authors: [String]?
+      public var comments: String?
+      public var copyright: String?
+      public var license: String?
+      public var website: String?
+      public var websiteLabel: String?
+      public var credits: String?
+
+      public init(
+        name: String? = nil,
+        version: String? = nil,
+        shortVersion: String? = nil,
+        authors: [String]? = nil,
+        comments: String? = nil,
+        copyright: String? = nil,
+        license: String? = nil,
+        website: String? = nil,
+        websiteLabel: String? = nil,
+        credits: String? = nil
+      ) {
+        self.name = name
+        self.version = version
+        self.shortVersion = shortVersion
+        self.authors = authors
+        self.comments = comments
+        self.copyright = copyright
+        self.license = license
+        self.website = website
+        self.websiteLabel = websiteLabel
+        self.credits = credits
+      }
+
+      enum CodingKeys: String, CodingKey {
+        case name
+        case version
+        case shortVersion = "shortVersion"
+        case authors
+        case comments
+        case copyright
+        case license
+        case website
+        case websiteLabel = "websiteLabel"
+        case credits
+      }
+    }
+
+    fileprivate let raw: UnsafeMutablePointer<VeloxPredefinedMenuItemHandle>
+    public let identifier: String
+
+    public init?(
+      item: Item,
+      title: String? = nil,
+      aboutMetadata: AboutMetadata? = nil
+    ) {
+      guard Thread.isMainThread else {
+        return nil
+      }
+
+      let aboutMetadataString: String? = {
+        guard item == .about, let aboutMetadata else { return nil }
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(aboutMetadata) else {
+          return nil
+        }
+        return String(data: data, encoding: .utf8)
+      }()
+
+      let handle: UnsafeMutablePointer<VeloxPredefinedMenuItemHandle>? = item.rawValue.withCString { itemPointer in
+        withOptionalCString(title ?? "") { titlePointer in
+          withOptionalCString(aboutMetadataString ?? "") { metadataPointer in
+            velox_predefined_menu_item_new(itemPointer, titlePointer, metadataPointer)
+          }
+        }
+      }
+
+      guard let handle else {
+        return nil
+      }
+
+      self.raw = handle
+      self.identifier = string(from: velox_predefined_menu_item_identifier(handle))
+    }
+
+    deinit {
+      velox_predefined_menu_item_free(raw)
+    }
+
+    public func title() -> String {
+      guard Thread.isMainThread else {
+        return ""
+      }
+      return string(from: velox_predefined_menu_item_text(raw))
+    }
+
+    @discardableResult
+    public func setTitle(_ title: String) -> Bool {
+      guard Thread.isMainThread else {
+        return false
+      }
+      return title.withCString { pointer in
+        velox_predefined_menu_item_set_text(raw, pointer)
+      }
+    }
+  }
+
   final class TrayIcon: @unchecked Sendable {
     private let raw: UnsafeMutablePointer<VeloxTrayHandle>
 
@@ -3178,6 +3822,25 @@ public extension VeloxRuntimeWry {
       return velox_tray_set_menu(raw, menu?.raw)
     }
   }
+}
+
+private func withRawPointer<T>(_ item: AnyObject, _ body: (UnsafeMutableRawPointer?) -> T) -> T {
+  if let item = item as? VeloxRuntimeWry.MenuItem {
+    return body(UnsafeMutableRawPointer(item.raw))
+  }
+  if let item = item as? VeloxRuntimeWry.PredefinedMenuItem {
+    return body(UnsafeMutableRawPointer(item.raw))
+  }
+  if let item = item as? VeloxRuntimeWry.CheckMenuItem {
+    return body(UnsafeMutableRawPointer(item.raw))
+  }
+  if let item = item as? VeloxRuntimeWry.IconMenuItem {
+    return body(UnsafeMutableRawPointer(item.raw))
+  }
+  if let item = item as? VeloxRuntimeWry.Submenu {
+    return body(UnsafeMutableRawPointer(item.raw))
+  }
+  return body(nil)
 }
 #endif
 

@@ -12,6 +12,9 @@ public final class VeloxEventManager: @unchecked Sendable {
   /// Registered webviews by label
   private var webviews: [String: WeakWebview] = [:]
 
+  /// Registered windows by label
+  private var windows: [String: WeakWindow] = [:]
+
   /// Mapping from internal webview IDs to labels
   private var internalIdToLabel: [String: String] = [:]
 
@@ -51,6 +54,29 @@ public final class VeloxEventManager: @unchecked Sendable {
     webviews.removeValue(forKey: label)
     // Clean up internal ID mapping
     internalIdToLabel = internalIdToLabel.filter { $0.value != label }
+  }
+
+  // MARK: - Window Registration
+
+  /// Register a window for menu and window-specific operations.
+  public func register(window: VeloxRuntimeWry.Window, label: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    windows[label] = WeakWindow(window)
+  }
+
+  /// Unregister a window.
+  public func unregisterWindow(label: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    windows.removeValue(forKey: label)
+  }
+
+  /// Get a window by its label.
+  public func window(for label: String) -> VeloxRuntimeWry.Window? {
+    lock.lock()
+    defer { lock.unlock() }
+    return windows[label]?.window
   }
 
   /// Get all registered webview labels
@@ -228,6 +254,14 @@ private final class WeakWebview: @unchecked Sendable {
 
   init(_ webview: VeloxRuntimeWry.Webview) {
     self.webview = webview
+  }
+}
+
+private final class WeakWindow: @unchecked Sendable {
+  weak var window: VeloxRuntimeWry.Window?
+
+  init(_ window: VeloxRuntimeWry.Window) {
+    self.window = window
   }
 }
 

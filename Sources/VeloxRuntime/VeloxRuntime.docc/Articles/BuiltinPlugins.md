@@ -4,7 +4,7 @@ Use Velox's ready-made plugins for common functionality.
 
 ## Overview
 
-Velox includes seven built-in plugins that provide access to system features. Import them from `VeloxPlugins` or individually.
+Velox includes eight built-in plugins that provide access to system features. Import them from `VeloxPlugins` or individually.
 
 ## Using Built-in Plugins
 
@@ -235,6 +235,63 @@ await window.Velox.invoke('plugin:process|relaunch');
 
 // Exit with code
 await window.Velox.invoke('plugin:process|exit', { code: 0 });
+```
+
+## Menu Plugin
+
+**Module:** `VeloxPluginMenu`
+
+Native application and window menus, modeled after Tauri.
+
+### Commands
+
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `plugin:menu|new` | `MenuArgs` | Create a new menu |
+| `plugin:menu|create_default` | `DefaultMenuArgs` | Create the default application menu |
+| `plugin:menu|append` | `MenuItemActionArgs` | Append an item to a menu or submenu |
+| `plugin:menu|prepend` | `MenuItemActionArgs` | Prepend an item to a menu or submenu |
+| `plugin:menu|insert` | `MenuItemActionArgs` | Insert an item at a position |
+| `plugin:menu|remove` | `MenuItemActionArgs` | Remove an item |
+| `plugin:menu|remove_at` | `MenuRemoveAtArgs` | Remove an item at a position |
+| `plugin:menu|items` | `MenuItemsArgs` | List items for a menu or submenu |
+| `plugin:menu|get` | `MenuGetArgs` | Get an item by id |
+| `plugin:menu|popup` | `MenuPopupArgs` | Show a popup menu |
+| `plugin:menu|set_as_app_menu` | `SetMenuAsAppMenuArgs` | Set menu as the application menu |
+| `plugin:menu|set_as_window_menu` | `SetMenuAsWindowMenuArgs` | Set menu as a window menu |
+| `plugin:menu|text` | `MenuItemTextArgs` | Read an item’s label |
+| `plugin:menu|set_text` | `MenuItemTextArgs` | Update an item’s label |
+| `plugin:menu|is_enabled` | `MenuItemEnabledArgs` | Check if an item is enabled |
+| `plugin:menu|set_enabled` | `MenuItemEnabledArgs` | Enable or disable an item |
+| `plugin:menu|set_accelerator` | `MenuItemAcceleratorArgs` | Set a keyboard shortcut |
+| `plugin:menu|is_checked` | `MenuItemCheckedArgs` | Check if a check item is selected |
+| `plugin:menu|set_checked` | `MenuItemCheckedArgs` | Set a check item |
+| `plugin:menu|set_icon` | `MenuItemIconArgs` | Set a native icon for an item |
+
+### Examples
+
+```javascript
+// Create a menu bar and set it as the app menu
+const menu = await window.Velox.invoke('plugin:menu|new', { items: [] });
+await window.Velox.invoke('plugin:menu|set_as_app_menu', { menu });
+
+// Create a submenu and a menu item, then append it
+const openItem = {
+  id: 'open',
+  kind: 'MenuItem',
+  text: 'Open…',
+  enabled: true,
+  accelerator: 'CmdOrCtrl+O'
+};
+
+await window.Velox.invoke('plugin:menu|append', {
+  menu,
+  items: [openItem]
+});
+
+// Build the default application menu
+const defaultMenu = await window.Velox.invoke('plugin:menu|create_default', {});
+await window.Velox.invoke('plugin:menu|set_as_app_menu', { menu: defaultMenu });
 ```
 
 ## Opener Plugin
