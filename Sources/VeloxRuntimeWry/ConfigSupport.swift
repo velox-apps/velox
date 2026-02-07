@@ -445,6 +445,11 @@ public final class VeloxAppBuilder {
         }
       }
 
+      // Notify plugins that a window was created
+      if pluginManager.hasPlugins {
+        pluginManager.dispatchEvent("{\"type\":\"windowCreated\",\"label\":\"\(windowConfig.label)\"}")
+      }
+
       // Apply visibility
       if windowConfig.visible ?? true {
         window.setVisible(true)
@@ -476,17 +481,58 @@ public final class VeloxAppBuilder {
     }
 
     let windows = build(eventLoop: eventLoop)
+    let pm = pluginManager
     // Keep window/webview handles alive for the duration of the run loop.
     withExtendedLifetime(windows) {
       #if os(macOS)
       eventLoop.showApplication()
       #endif
 
-      if let handler {
-        eventLoop.run(handler)
-      } else {
-        eventLoop.run()
+      // Wrap the user handler to also dispatch events to plugins.
+      let wrappedHandler: @Sendable (VeloxRuntimeWry.Event) -> VeloxRuntimeWry.ControlFlow = { event in
+        if pm.hasPlugins {
+          if let json = Self.eventToJSON(event) {
+            pm.dispatchEvent(json)
+          }
+        }
+        return handler?(event) ?? Self.defaultControlFlow(event)
       }
+      eventLoop.run(wrappedHandler)
+    }
+  }
+
+  // MARK: - Event Helpers
+
+  /// Default control flow for events when no user handler is provided.
+  private static func defaultControlFlow(_ event: VeloxRuntimeWry.Event) -> VeloxRuntimeWry.ControlFlow {
+    switch event {
+    case .windowCloseRequested, .userExit, .exitRequested:
+      return .exit
+    default:
+      return .wait
+    }
+  }
+
+  /// Converts a VeloxRuntimeWry.Event to a JSON string for plugin dispatch.
+  /// Returns nil for events that don't need plugin notification.
+  private static func eventToJSON(_ event: VeloxRuntimeWry.Event) -> String? {
+    switch event {
+    case .windowResized(let windowId, let size):
+      return "{\"type\":\"windowResized\",\"windowId\":\"\(windowId)\",\"width\":\(size.width),\"height\":\(size.height)}"
+    case .windowMoved(let windowId, let position):
+      return "{\"type\":\"windowMoved\",\"windowId\":\"\(windowId)\",\"x\":\(position.x),\"y\":\(position.y)}"
+    case .windowCloseRequested(let windowId):
+      return "{\"type\":\"windowCloseRequested\",\"windowId\":\"\(windowId)\"}"
+    case .windowDestroyed(let windowId):
+      return "{\"type\":\"windowDestroyed\",\"windowId\":\"\(windowId)\"}"
+    case .windowFocused(let windowId, let isFocused):
+      return "{\"type\":\"windowFocused\",\"windowId\":\"\(windowId)\",\"isFocused\":\(isFocused)}"
+    case .reopen(let hasVisibleWindows):
+      return "{\"type\":\"reopen\",\"hasVisibleWindows\":\(hasVisibleWindows)}"
+    case .userExit:
+      return "{\"type\":\"userExit\"}"
+    default:
+      return nil
     }
   }
 

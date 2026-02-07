@@ -51,3 +51,4 @@
 @_exported import VeloxPluginOpener
 @_exported import VeloxPluginResources
 @_exported import VeloxPluginMenu
+@_exported import VeloxPluginWindowState
