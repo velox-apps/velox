@@ -156,6 +156,11 @@ public struct VeloxBundler {
         if FileManager.default.fileExists(atPath: assetsDest.path) {
           try FileManager.default.removeItem(at: assetsDest)
         }
+        // Ensure parent directory exists for nested frontendDist paths like "frontend/dist"
+        let assetsDestParent = assetsDest.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: assetsDestParent.path) {
+          try FileManager.default.createDirectory(at: assetsDestParent, withIntermediateDirectories: true)
+        }
         try FileManager.default.copyItem(at: assetsSource, to: assetsDest)
         logger.info("[bundle] Copied assets from \(frontendDist)")
       }
