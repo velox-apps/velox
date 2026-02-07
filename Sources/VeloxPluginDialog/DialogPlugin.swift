@@ -106,15 +106,16 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
     NSApp.activate(ignoringOtherApps: true)
     let panel = NSOpenPanel()
     panel.title = args.title ?? "Open"
-    panel.canChooseFiles = !(args.directory ?? false)
-    panel.canChooseDirectories = args.directory ?? false
+    let isDirectoryOnly = args.directory ?? false
+    panel.canChooseFiles = !isDirectoryOnly
+    panel.canChooseDirectories = isDirectoryOnly
     panel.allowsMultipleSelection = args.multiple ?? false
 
     if let defaultPath = args.defaultPath {
       panel.directoryURL = URL(fileURLWithPath: defaultPath)
     }
 
-    if let filters = args.filters, !filters.isEmpty {
+    if !isDirectoryOnly, let filters = args.filters, !filters.isEmpty {
       var allowedTypes: [String] = []
       for filter in filters {
         allowedTypes.append(contentsOf: filter.extensions)

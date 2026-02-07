@@ -38,6 +38,33 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
 
   public init() {}
 
+  #if os(macOS)
+  private func notificationCenter() -> UNUserNotificationCenter? {
+    // UNUserNotificationCenter requires a valid app bundle; skip when running from a CLI build dir.
+    guard Bundle.main.bundleURL.pathExtension == "app" else {
+      return nil
+    }
+    if Thread.isMainThread {
+      return UNUserNotificationCenter.current()
+    }
+    var center: UNUserNotificationCenter?
+    DispatchQueue.main.sync {
+      center = UNUserNotificationCenter.current()
+    }
+    return center
+  }
+
+  private func notificationCenterOrThrow() throws -> UNUserNotificationCenter {
+    guard let center = notificationCenter() else {
+      throw CommandError(
+        code: "NotificationsUnavailable",
+        message: "Notifications require a bundled .app. Current bundle: \(Bundle.main.bundleURL.path)"
+      )
+    }
+    return center
+  }
+  #endif
+
   public func setup(context: PluginSetupContext) throws {
     let commands = context.commands(for: name)
 
@@ -46,7 +73,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       #if os(macOS)
       let semaphore = DispatchSemaphore(value: 0)
       var result = false
-      UNUserNotificationCenter.current().getNotificationSettings { settings in
+      let center = try self.notificationCenterOrThrow()
+      center.getNotificationSettings { settings in
         result = settings.authorizationStatus == .authorized
         semaphore.signal()
       }
@@ -62,7 +90,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       #if os(macOS)
       let semaphore = DispatchSemaphore(value: 0)
       var result = "denied"
-      UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+      let center = try self.notificationCenterOrThrow()
+      center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
         result = granted ? "granted" : "denied"
         semaphore.signal()
       }
@@ -97,7 +126,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
 
       let semaphore = DispatchSemaphore(value: 0)
       var result = false
-      UNUserNotificationCenter.current().add(request) { error in
+      let center = try self.notificationCenterOrThrow()
+      center.add(request) { error in
         result = error == nil
         semaphore.signal()
       }
@@ -111,7 +141,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
     // Remove pending notifications
     commands.register("removeAllPending", returning: EmptyResponse.self) { _ in
       #if os(macOS)
-      UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+      let center = try self.notificationCenterOrThrow()
+      center.removeAllPendingNotificationRequests()
       #endif
       return EmptyResponse()
     }
@@ -119,7 +150,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
     // Remove delivered notifications
     commands.register("removeAllDelivered", returning: EmptyResponse.self) { _ in
       #if os(macOS)
-      UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+      let center = try self.notificationCenterOrThrow()
+      center.removeAllDeliveredNotifications()
       #endif
       return EmptyResponse()
     }

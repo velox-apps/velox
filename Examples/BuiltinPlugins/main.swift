@@ -89,6 +89,7 @@ let html = """
     <h2>Dialog Plugin</h2>
     <div class="row">
       <button onclick="openFile()">Open File</button>
+      <button onclick="openDirectory()">Open Directory</button>
       <button onclick="saveFile()">Save File</button>
       <button onclick="showMessage()">Message</button>
       <button onclick="showAsk()">Ask (Yes/No)</button>
@@ -207,6 +208,16 @@ let html = """
           multiple: true
         });
         log('dialog-output', `Selected: ${result ? result.join(', ') : 'cancelled'}`);
+      } catch (e) { log('dialog-output', `Error: ${e}`); }
+    }
+
+    async function openDirectory() {
+      try {
+        const result = await invoke('plugin:dialog|open', {
+          title: 'Select a directory',
+          directory: true
+        });
+        log('dialog-output', `Selected directory: ${result ? result.join(', ') : 'cancelled'}`);
       } catch (e) { log('dialog-output', `Error: ${e}`); }
     }
 
