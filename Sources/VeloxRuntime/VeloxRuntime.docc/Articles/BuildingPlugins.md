@@ -154,7 +154,7 @@ let package = Package(
     ],
     dependencies: [
         // Depend on VeloxRuntime for the plugin protocol
-        .package(url: "https://github.com/aspect-apps/velox.git", from: "1.0.0")
+        .package(url: "https://github.com/velox-apps/velox.git", from: "1.0.0")
     ],
     targets: [
         .target(
@@ -379,7 +379,7 @@ let package = Package(
     name: "MyApp",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(url: "https://github.com/aspect-apps/velox.git", from: "1.0.0"),
+        .package(url: "https://github.com/velox-apps/velox.git", from: "1.0.0"),
         // Add plugin packages
         .package(url: "https://github.com/example/velox-plugin-analytics.git", from: "1.0.0"),
         .package(url: "https://github.com/example/velox-plugin-auth.git", from: "2.0.0")

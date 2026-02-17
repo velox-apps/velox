@@ -5,7 +5,7 @@ let package = Package(
     name: "MyApp",
     platforms: [.macOS(.v13)],
     dependencies: [
-        .package(url: "https://github.com/aspect-apps/velox.git", from: "1.0.0")
+        .package(url: "https://github.com/velox-apps/velox.git", from: "1.0.0")
     ],
     targets: [
         .executableTarget(
