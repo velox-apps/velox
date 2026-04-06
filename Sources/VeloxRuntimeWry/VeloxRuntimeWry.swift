@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(Darwin)
 import Darwin
+#elseif canImport(ucrt)
+import ucrt
 #else
 import Glibc
 #endif
@@ -286,13 +288,7 @@ public enum VeloxRuntimeWry {
 
   static func duplicateCString(_ string: String) -> UnsafeMutablePointer<CChar>? {
     string.withCString { source -> UnsafeMutablePointer<CChar>? in
-#if canImport(Darwin)
-      guard let duplicated = Darwin.strdup(source) else { return nil }
-      return duplicated
-#else
-      guard let duplicated = Glibc.strdup(source) else { return nil }
-      return duplicated
-#endif
+      strdup(source)
     }
   }
 

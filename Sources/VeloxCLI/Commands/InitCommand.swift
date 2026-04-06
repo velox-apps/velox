@@ -1,7 +1,9 @@
 import ArgumentParser
-import Darwin
 import Foundation
 import Logging
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Initializes a new Velox project or adds Velox to an existing Swift package.
 ///

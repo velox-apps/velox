@@ -1,8 +1,14 @@
 import ArgumentParser
-import Darwin
 import Foundation
 import Logging
 import VeloxRuntime
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(ucrt)
+import ucrt
+#endif
 
 /// Result of running app with file watching.
 ///
@@ -12,6 +18,18 @@ enum WatchResult {
   case fileChanged(FileChangeResult)
   /// The app exited on its own (crash or user close).
   case appExited
+}
+
+private func terminateCurrentProcess(_ code: Int32) -> Never {
+#if canImport(Darwin)
+  Darwin.exit(code)
+#elseif canImport(Glibc)
+  Glibc.exit(code)
+#elseif canImport(ucrt)
+  ucrt.exit(code)
+#else
+  fatalError("Process termination is unsupported on this platform.")
+#endif
 }
 
 /// Runs the app and file watcher concurrently, returning when either completes.
@@ -337,10 +355,13 @@ struct DevCommand: AsyncParsableCommand {
     return config.build?.devUrl
   }
 
+  #if canImport(Darwin) || canImport(Glibc)
   // Store signal sources to prevent deallocation
   private static var signalSources: [DispatchSourceSignal] = []
+  #endif
 
   private func setupSignalHandlers(processManager: ProcessManager) {
+    #if canImport(Darwin) || canImport(Glibc)
     // Use global queue instead of main - main run loop may not be running in async context
     let signalQueue = DispatchQueue(label: "com.velox.signals")
 
@@ -350,7 +371,7 @@ struct DevCommand: AsyncParsableCommand {
       logger.info("\n[shutdown] Received SIGINT, cleaning up...")
       Task {
         await processManager.terminateAll()
-        Darwin.exit(0)
+        terminateCurrentProcess(0)
       }
     }
     signalSource.resume()
@@ -362,10 +383,13 @@ struct DevCommand: AsyncParsableCommand {
       logger.info("\n[shutdown] Received SIGTERM, cleaning up...")
       Task {
         await processManager.terminateAll()
-        Darwin.exit(0)
+        terminateCurrentProcess(0)
       }
     }
     termSource.resume()
     DevCommand.signalSources.append(termSource)
+    #else
+    _ = processManager
+    #endif
   }
 }

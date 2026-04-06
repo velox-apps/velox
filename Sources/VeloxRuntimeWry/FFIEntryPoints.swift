@@ -1,5 +1,12 @@
 import Foundation
 import VeloxRuntimeWryFFI
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(ucrt)
+import ucrt
+#else
+import Glibc
+#endif
 
 @_cdecl("velox_custom_protocol_handler_bridge")
 func velox_custom_protocol_handler_bridge(

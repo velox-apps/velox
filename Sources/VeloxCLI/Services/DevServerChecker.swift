@@ -1,5 +1,7 @@
 import Foundation
-import Darwin
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 struct DevServerChecker: Sendable {
   let url: String
@@ -24,58 +26,7 @@ struct DevServerChecker: Sendable {
   /// Checks if the server is responding
   private func checkConnection() async -> Bool {
     guard let url = URL(string: url) else { return false }
-
-    // Try TCP connection first (faster)
-    if let host = url.host, let port = url.port ?? defaultPort(for: url.scheme) {
-      if await checkTCPConnection(host: host, port: port) {
-        return true
-      }
-    }
-
-    // Fall back to HTTP request
     return await checkHTTPConnection(url: url)
-  }
-
-  private func checkTCPConnection(host: String, port: Int) async -> Bool {
-    return await withCheckedContinuation { continuation in
-      let sock = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-      guard sock >= 0 else {
-        continuation.resume(returning: false)
-        return
-      }
-
-      defer { Darwin.close(sock) }
-
-      // Set socket timeout
-      var timeout = timeval(tv_sec: 2, tv_usec: 0)
-      setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-
-      var addr = sockaddr_in()
-      addr.sin_family = sa_family_t(AF_INET)
-      addr.sin_port = in_port_t(port).bigEndian
-
-      // Try to resolve the host
-      if inet_pton(AF_INET, host, &addr.sin_addr) != 1 {
-        // Try resolving hostname
-        if let hostent = gethostbyname(host),
-          let addrList = hostent.pointee.h_addr_list,
-          let firstAddr = addrList[0]
-        {
-          memcpy(&addr.sin_addr, firstAddr, Int(hostent.pointee.h_length))
-        } else {
-          continuation.resume(returning: false)
-          return
-        }
-      }
-
-      let connectResult = withUnsafePointer(to: &addr) { ptr in
-        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-          Darwin.connect(sock, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
-        }
-      }
-
-      continuation.resume(returning: connectResult == 0)
-    }
   }
 
   private func checkHTTPConnection(url: URL) async -> Bool {
@@ -91,14 +42,6 @@ struct DevServerChecker: Sendable {
       return false
     } catch {
       return false
-    }
-  }
-
-  private func defaultPort(for scheme: String?) -> Int? {
-    switch scheme {
-    case "http": return 80
-    case "https": return 443
-    default: return nil
     }
   }
 }

@@ -1,5 +1,12 @@
 import Foundation
 import VeloxRuntimeWryFFI
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(ucrt)
+import ucrt
+#else
+import Glibc
+#endif
 
 final class VeloxCustomProtocolHandlerBox: @unchecked Sendable {
   let handler: VeloxRuntimeWry.CustomProtocol.Handler

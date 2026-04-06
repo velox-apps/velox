@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Swift (macOS)
+        if: runner.os == 'macOS'
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.3"
+
+      - name: Setup Swift (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          winget install --id Swift.Toolchain --exact --source winget --accept-package-agreements --accept-source-agreements
+
+          $swift = Get-Command swift.exe -ErrorAction SilentlyContinue
+
+          if (-not $swift) {
+            $searchRoots = @(
+              "$env:LOCALAPPDATA\Programs\Swift\Toolchains",
+              "$env:ProgramFiles\Swift\Toolchains",
+              "C:\Library\Developer\Toolchains"
+            ) | Where-Object { Test-Path $_ }
+
+            foreach ($root in $searchRoots) {
+              $toolchain = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending |
+                Select-Object -First 1
+
+              if ($toolchain) {
+                $candidate = Join-Path $toolchain.FullName "usr\bin\swift.exe"
+                if (Test-Path $candidate) {
+                  $swift = @{ Source = $candidate }
+                  break
+                }
+              }
+            }
+          }
+
+          if (-not $swift) {
+            throw "Swift toolchain not found after installation."
+          }
+
+          $swiftBin = Split-Path -Parent $swift.Source
+          Add-Content -Path $env:GITHUB_PATH -Value $swiftBin
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          swift --version
+          cargo --version
+          rustc --version
+
+      - name: Build Rust FFI
+        shell: pwsh
+        run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml --locked
+
+      - name: Build Swift package
+        shell: pwsh
+        env:
+          VELOX_CARGO_ONLINE: "1"
+        run: swift build --disable-sandbox

@@ -27,6 +27,93 @@ private func shouldUseOfflineCargo() -> Bool {
   return true
 }
 
+private func resolveCargoExecutable(environment: [String: String]) -> String? {
+  let fileManager = FileManager.default
+
+  func executableExtensions() -> [String] {
+#if os(Windows)
+    let pathExtensions = environment["PATHEXT"]?
+      .split(separator: ";")
+      .map { String($0).lowercased() } ?? [".exe", ".cmd", ".bat"]
+    return [""] + pathExtensions
+#else
+    return [""]
+#endif
+  }
+
+  func isExecutable(_ path: String) -> Bool {
+    fileManager.isExecutableFile(atPath: path)
+  }
+
+  func resolveInDirectory(_ directory: String, executable name: String) -> String? {
+    for ext in executableExtensions() {
+      let candidate = URL(fileURLWithPath: directory)
+        .appendingPathComponent(name + ext)
+        .path
+      if isExecutable(candidate) {
+        return candidate
+      }
+    }
+    return nil
+  }
+
+  if let path = environment["PATH"] {
+#if os(Windows)
+    let separator: Character = ";"
+#else
+    let separator: Character = ":"
+#endif
+    for entry in path.split(separator: separator).map(String.init) where !entry.isEmpty {
+      if let cargo = resolveInDirectory(entry, executable: "cargo") {
+        return cargo
+      }
+    }
+  }
+
+  let homeDirectory: String? = environment["HOME"] ?? environment["USERPROFILE"]
+  if let homeDirectory {
+    let cargoBin = URL(fileURLWithPath: homeDirectory)
+      .appendingPathComponent(".cargo")
+      .appendingPathComponent("bin")
+      .path
+    if let cargo = resolveInDirectory(cargoBin, executable: "cargo") {
+      return cargo
+    }
+  }
+
+  return nil
+}
+
+private func cargoArguments(
+  manifest: Path,
+  cargoTargetDirectory: Path
+) -> [String] {
+  var arguments = [
+    "build",
+    "--manifest-path", manifest.string,
+    "--target-dir", cargoTargetDirectory.string,
+    "--locked",
+  ]
+  if shouldUseOfflineCargo() {
+    arguments.append("--offline")
+  }
+  if isReleaseConfiguration() {
+    arguments.append("--release")
+  }
+  if ProcessInfo.processInfo.environment["VELOX_LOCAL_DEV"] == "1" {
+    arguments.append(contentsOf: ["--features", "local-dev"])
+  }
+  return arguments
+}
+
+private func cargoEnvironment() -> [String: String] {
+  var environment = ProcessInfo.processInfo.environment
+  if shouldUseOfflineCargo() {
+    environment["CARGO_NET_OFFLINE"] = "true"
+  }
+  return environment
+}
+
 @main
 struct VeloxRustBuildPlugin: BuildToolPlugin {
   func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
@@ -42,47 +129,21 @@ struct VeloxRustBuildPlugin: BuildToolPlugin {
     let manifest = context.package.directory.appending("runtime-wry-ffi/Cargo.toml")
     let outputDirectory = context.pluginWorkDirectory.appending("Artifacts")
     let cargoTargetDirectory = outputDirectory.appending("cargo-target")
-    let stampFile = outputDirectory.appending("velox-runtime-wry-ffi.stamp")
-    let cargoProfile = isReleaseConfiguration() ? "release" : "debug"
-
-    var scriptLines = ["set -euo pipefail"]
-    if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
-      scriptLines.append("export PATH=\"$PATH:\(home)/.cargo/bin\"")
+    let environment = ProcessInfo.processInfo.environment
+    guard let cargoExecutable = resolveCargoExecutable(environment: environment) else {
+      Diagnostics.error("VeloxRustBuildPlugin could not find a cargo executable in PATH or the standard Cargo install directory.")
+      return []
     }
-    if shouldUseOfflineCargo() {
-      scriptLines.append("export CARGO_NET_OFFLINE=true")
-      scriptLines.append("echo '[VeloxRustBuildPlugin] cargo offline mode enabled'")
-    }
-    scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
-    scriptLines.append("cd \"\(context.package.directory.string)\"")
-    scriptLines.append("mkdir -p \"runtime-wry-ffi/target/\(cargoProfile)\"")
-    scriptLines.append("if ! command -v cargo >/dev/null; then")
-    scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
-    scriptLines.append("  exit 1")
-    scriptLines.append("fi")
-
-    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\" --locked"
-    if shouldUseOfflineCargo() {
-      buildCommand += " --offline"
-    }
-    if isReleaseConfiguration() {
-      buildCommand += " --release"
-    }
-    // Enable local-dev feature when VELOX_LOCAL_DEV=1 (for testing with patched tao/wry)
-    if ProcessInfo.processInfo.environment["VELOX_LOCAL_DEV"] == "1" {
-      buildCommand += " --features local-dev"
-    }
-    scriptLines.append(buildCommand)
-    scriptLines.append("touch \"\(stampFile.string)\"")
-
-    let script = scriptLines.joined(separator: "\n") + "\n"
 
     return [
       .prebuildCommand(
         displayName: "Building velox-runtime-wry-ffi (Rust)",
-        executable: Path("/bin/sh"),
-        arguments: ["-c", script],
-        environment: [:],
+        executable: Path(cargoExecutable),
+        arguments: cargoArguments(
+          manifest: manifest,
+          cargoTargetDirectory: cargoTargetDirectory
+        ),
+        environment: cargoEnvironment(),
         outputFilesDirectory: outputDirectory
       ),
     ]
@@ -110,47 +171,21 @@ extension VeloxRustBuildPlugin: XcodeBuildToolPlugin {
     let manifest = context.xcodeProject.directory.appending("runtime-wry-ffi/Cargo.toml")
     let outputDirectory = context.pluginWorkDirectory.appending("Artifacts")
     let cargoTargetDirectory = outputDirectory.appending("cargo-target")
-    let stampFile = outputDirectory.appending("velox-runtime-wry-ffi.stamp")
-    let cargoProfile = isReleaseConfiguration() ? "release" : "debug"
-
-    var scriptLines = ["set -euo pipefail"]
-    if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
-      scriptLines.append("export PATH=\"$PATH:\(home)/.cargo/bin\"")
+    let environment = ProcessInfo.processInfo.environment
+    guard let cargoExecutable = resolveCargoExecutable(environment: environment) else {
+      Diagnostics.error("VeloxRustBuildPlugin could not find a cargo executable in PATH or the standard Cargo install directory.")
+      return []
     }
-    if shouldUseOfflineCargo() {
-      scriptLines.append("export CARGO_NET_OFFLINE=true")
-      scriptLines.append("echo '[VeloxRustBuildPlugin] cargo offline mode enabled'")
-    }
-    scriptLines.append("echo '[VeloxRustBuildPlugin] PATH='\"$PATH\"")
-    scriptLines.append("cd \"\(context.xcodeProject.directory.string)\"")
-    scriptLines.append("mkdir -p \"runtime-wry-ffi/target/\(cargoProfile)\"")
-    scriptLines.append("if ! command -v cargo >/dev/null; then")
-    scriptLines.append("  echo '[VeloxRustBuildPlugin] error: cargo executable not found' 1>&2")
-    scriptLines.append("  exit 1")
-    scriptLines.append("fi")
-
-    var buildCommand = "cargo build --manifest-path \"\(manifest.string)\" --target-dir \"\(cargoTargetDirectory.string)\" --locked"
-    if shouldUseOfflineCargo() {
-      buildCommand += " --offline"
-    }
-    if isReleaseConfiguration() {
-      buildCommand += " --release"
-    }
-    // Enable local-dev feature when VELOX_LOCAL_DEV=1 (for testing with patched tao/wry)
-    if ProcessInfo.processInfo.environment["VELOX_LOCAL_DEV"] == "1" {
-      buildCommand += " --features local-dev"
-    }
-    scriptLines.append(buildCommand)
-    scriptLines.append("touch \"\(stampFile.string)\"")
-
-    let script = scriptLines.joined(separator: "\n") + "\n"
 
     return [
       .prebuildCommand(
         displayName: "Building velox-runtime-wry-ffi (Rust)",
-        executable: Path("/bin/sh"),
-        arguments: ["-c", script],
-        environment: [:],
+        executable: Path(cargoExecutable),
+        arguments: cargoArguments(
+          manifest: manifest,
+          cargoTargetDirectory: cargoTargetDirectory
+        ),
+        environment: cargoEnvironment(),
         outputFilesDirectory: outputDirectory
       ),
     ]
