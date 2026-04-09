@@ -54,8 +54,10 @@ use wry::{
         Response as WryHttpResponse, StatusCode,
     },
     BackgroundThrottlingPolicy, ProxyConfig, ProxyEndpoint, Rect, WebContext, WebView,
-    WebViewBuilder, WebViewBuilderExtWindows,
+    WebViewBuilder,
 };
+#[cfg(target_os = "windows")]
+use wry::WebViewBuilderExtWindows;
 #[cfg(target_os = "windows")]
 use wry::ScrollBarStyle;
 
