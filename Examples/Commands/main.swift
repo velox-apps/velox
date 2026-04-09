@@ -279,6 +279,7 @@ func main() {
       return deferred.pending
     }
 
+    #if canImport(CoreGraphics)
     // Binary response test - returns a red PNG image using CoreGraphics
     binaryCommand("get_image", mimeType: "image/png") { _ in
       // Create a 50x50 red image
@@ -317,6 +318,7 @@ func main() {
 
       return data as Data
     }
+    #endif
   }
 
   print("[Commands] Registered commands: \(registry.commandNames.sorted().joined(separator: ", "))")

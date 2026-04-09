@@ -34,10 +34,12 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_event_loop_proxy_request_exit;
   (void)velox_event_loop_proxy_send_user_event;
   (void)velox_event_loop_proxy_free;
+#if defined(__APPLE__)
   (void)velox_event_loop_set_activation_policy;
   (void)velox_event_loop_set_dock_visibility;
   (void)velox_event_loop_hide_application;
   (void)velox_event_loop_show_application;
+#endif
   (void)velox_window_build;
   (void)velox_window_free;
   (void)velox_window_identifier;
@@ -122,8 +124,8 @@ void velox_runtime_wry_ffi_link_helper(void) {
   (void)velox_tray_set_tooltip;
   (void)velox_tray_set_visible;
   (void)velox_tray_set_show_menu_on_left_click;
-  (void)velox_tray_set_menu;
 #if defined(__APPLE__)
+  (void)velox_tray_set_menu;
   (void)velox_menu_bar_new;
   (void)velox_menu_bar_new_with_id;
   (void)velox_menu_bar_free;

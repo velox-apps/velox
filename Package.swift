@@ -209,7 +209,8 @@ let package = Package(
           "-L",
           ".build/plugins/outputs/velox/VeloxRuntimeWryFFI/destination/VeloxRustBuildPlugin/Artifacts/cargo-target/release",
         ], .when(configuration: .release)),
-        .linkedLibrary("velox_runtime_wry_ffi")
+        .linkedLibrary("velox_runtime_wry_ffi"),
+        .unsafeFlags(["-lntdll"], .when(platforms: [.windows])),
       ]
     ),
     .target(

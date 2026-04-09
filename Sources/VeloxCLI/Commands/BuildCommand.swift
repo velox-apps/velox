@@ -165,8 +165,17 @@ struct BuildCommand: AsyncParsableCommand {
 
   private func runShellCommand(_ command: String) async throws -> Int32 {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+#if os(Windows)
+    let comspec = ProcessInfo.processInfo.environment["COMSPEC"] ?? "cmd.exe"
+    process.executableURL = URL(fileURLWithPath: comspec)
+    process.arguments = ["/c", command]
+#else
+    guard let sh = resolveExecutable("sh") else {
+      fatalError("Cannot find sh in PATH")
+    }
+    process.executableURL = URL(fileURLWithPath: sh)
     process.arguments = ["-c", command]
+#endif
     process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
     // Forward output
@@ -205,7 +214,10 @@ struct BuildCommand: AsyncParsableCommand {
     additionalEnv: [String: String] = [:]
   ) async throws -> Int32 {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+    guard let swiftPath = resolveExecutable("swift") else {
+      fatalError("Cannot find swift executable in PATH")
+    }
+    process.executableURL = URL(fileURLWithPath: swiftPath)
     process.arguments = ["build", "-c", configuration, "--product", target, "--disable-sandbox"]
     process.currentDirectoryURL = packageDirectory
 

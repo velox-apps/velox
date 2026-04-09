@@ -1,5 +1,8 @@
 import Foundation
 import Logging
+#if canImport(CoreServices)
+import CoreServices
+#endif
 
 /// Describes what types of files changed
 struct FileChangeResult: Sendable {
@@ -14,6 +17,7 @@ struct FileChangeResult: Sendable {
   }
 }
 
+#if canImport(CoreServices)
 final class FileWatcher: @unchecked Sendable {
   private let paths: [String]
   private let debounceInterval: TimeInterval
@@ -244,3 +248,14 @@ final class FileWatcher: @unchecked Sendable {
     return true
   }
 }
+#elseif os(Windows)
+final class FileWatcher: @unchecked Sendable {
+  init(paths: [String], debounceInterval: TimeInterval = 1.0) {}
+
+  func waitForChange() async -> FileChangeResult {
+    // Hot reload is not supported on Windows
+    try? await Task.sleep(nanoseconds: UInt64.max)
+    fatalError("Unreachable")
+  }
+}
+#endif

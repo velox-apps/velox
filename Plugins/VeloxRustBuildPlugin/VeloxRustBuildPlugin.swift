@@ -42,7 +42,7 @@ private func resolveCargoExecutable(environment: [String: String]) -> String? {
   }
 
   func isExecutable(_ path: String) -> Bool {
-    fileManager.isExecutableFile(atPath: path)
+    fileManager.fileExists(atPath: path) && fileManager.isExecutableFile(atPath: path)
   }
 
   func resolveInDirectory(_ directory: String, executable name: String) -> String? {
