@@ -46,7 +46,7 @@ public final class ShellPlugin: VeloxPlugin, @unchecked Sendable {
     let commands = context.commands(for: name)
 
     // Execute command synchronously
-    commands.register("execute", args: ExecuteArgs.self, returning: ExecuteResult.self) { [self] args, _ in
+    commands.register("execute", args: ExecuteArgs.self, returning: ExecuteResult.self) { args, _ in
       let process = Process()
       process.executableURL = URL(fileURLWithPath: args.program)
       process.arguments = args.args ?? []

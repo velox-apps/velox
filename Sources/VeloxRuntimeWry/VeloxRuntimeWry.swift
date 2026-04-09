@@ -288,7 +288,11 @@ public enum VeloxRuntimeWry {
 
   static func duplicateCString(_ string: String) -> UnsafeMutablePointer<CChar>? {
     string.withCString { source -> UnsafeMutablePointer<CChar>? in
+#if os(Windows)
+      _strdup(source)
+#else
       strdup(source)
+#endif
     }
   }
 
@@ -1495,7 +1499,7 @@ public extension VeloxRuntimeWry {
       }
 #endif
       let flow = box.handler(parsedEvent)
-      return VeloxRuntimeWryFFI.VeloxEventLoopControlFlow(rawValue: UInt32(flow.rawValue))
+      return VeloxRuntimeWryFFI.VeloxEventLoopControlFlow(rawValue: numericCast(flow.rawValue))
     }
   }
 
@@ -1971,7 +1975,7 @@ public extension VeloxRuntimeWry {
 
     @discardableResult
     public func requestUserAttention(_ type: AttentionType) -> Bool {
-      let ffiType = VeloxUserAttentionType(rawValue: UInt32(type.rawValue))
+      let ffiType = VeloxUserAttentionType(rawValue: numericCast(type.rawValue))
       return velox_window_request_user_attention(raw, ffiType)
     }
 
@@ -1987,7 +1991,7 @@ public extension VeloxRuntimeWry {
 
     @discardableResult
     public func startResizeDragging(_ direction: ResizeDirection) -> Bool {
-      let ffiDirection = VeloxResizeDirection(rawValue: UInt32(direction.rawValue))
+      let ffiDirection = VeloxResizeDirection(rawValue: numericCast(direction.rawValue))
       return velox_window_start_resize_dragging(raw, ffiDirection)
     }
 

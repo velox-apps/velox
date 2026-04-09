@@ -14,8 +14,17 @@ actor ProcessManager {
   /// Spawns a background process that runs until explicitly terminated
   func spawnBackgroundProcess(command: String, label: String) async throws {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+#if os(Windows)
+    let shell = ProcessInfo.processInfo.environment["COMSPEC"] ?? "cmd.exe"
+    process.executableURL = URL(fileURLWithPath: shell)
+    process.arguments = ["/c", command]
+#else
+    guard let sh = resolveExecutable("sh") else {
+      throw ProcessError.buildFailed("Cannot find sh in PATH")
+    }
+    process.executableURL = URL(fileURLWithPath: sh)
     process.arguments = ["-c", command]
+#endif
     process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
     // Set up pipes for output
@@ -60,7 +69,10 @@ actor ProcessManager {
     additionalEnv: [String: String] = [:]
   ) async throws {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+    guard let swiftPath = resolveExecutable("swift") else {
+      throw ProcessError.buildFailed("Swift executable not found in PATH")
+    }
+    process.executableURL = URL(fileURLWithPath: swiftPath)
 
     var args = ["run", "--disable-sandbox"]
     if release {
@@ -164,7 +176,11 @@ actor ProcessManager {
     let executablePath = workingDir
       .appendingPathComponent(".build")
       .appendingPathComponent(config)
+#if os(Windows)
+      .appendingPathComponent(target + ".exe")
+#else
       .appendingPathComponent(target)
+#endif
 
     // Check if executable exists
     guard FileManager.default.fileExists(atPath: executablePath.path) else {

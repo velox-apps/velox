@@ -292,6 +292,7 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
   //
   // These must run after the IPC handler returns to keep the run loop free.
 
+  #if canImport(AppKit)
   private static func showMessage(args: MessageArgs) -> Bool {
     NSApp.activate(ignoringOtherApps: true)
 
@@ -332,6 +333,7 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
     let response = alert.runModal()
     return response == .alertFirstButtonReturn
   }
+  #endif
 
   // MARK: - FFI Helpers
 

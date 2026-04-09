@@ -54,7 +54,7 @@ use wry::{
         Response as WryHttpResponse, StatusCode,
     },
     BackgroundThrottlingPolicy, ProxyConfig, ProxyEndpoint, Rect, WebContext, WebView,
-    WebViewBuilder,
+    WebViewBuilder, WebViewBuilderExtWindows,
 };
 #[cfg(target_os = "windows")]
 use wry::ScrollBarStyle;
@@ -742,7 +742,7 @@ fn apply_parent_builder(builder: TaoWindowBuilder, parent: &Window) -> TaoWindow
     {
         if let Ok(handle) = parent.window_handle() {
             if let RawWindowHandle::Win32(win32) = handle.as_raw() {
-                return builder.with_parent_window(HWND(win32.hwnd.get() as isize));
+                return builder.with_parent_window(win32.hwnd.get() as isize);
             }
         }
     }

@@ -26,6 +26,18 @@ struct VeloxLogHandler: LogHandler {
     let output = "\(message)\n"
     fputs(output, stderr)
   }
+
+  func log(event: LogEvent) {
+    log(
+        level: event.level,
+        message: event.message,
+        metadata: event.metadata,
+        source: event.source,
+        file: event.file,
+        function: event.function,
+        line: event.line
+    )
+  }
 }
 
 /// Configure the global logger with the specified log level
