@@ -49,6 +49,17 @@ jobs:
             throw "Swift installer failed with exit code $($process.ExitCode)."
           }
 
+          foreach ($level in "Machine", "User") {
+            [Environment]::GetEnvironmentVariables($level).GetEnumerator() |
+              ForEach-Object {
+                if ($_.Name -eq "Path") {
+                  $_.Value = ("$env:Path;$($_.Value)" -split ';' | Select-Object -Unique) -join ';'
+                }
+                $_
+              } |
+              Set-Content -Path { "Env:$($_.Name)" }
+          }
+
           $swift = Get-Command swift.exe -ErrorAction SilentlyContinue
 
           if (-not $swift) {
@@ -80,13 +91,21 @@ jobs:
           $swiftBin = Split-Path -Parent $swift.Source
           Add-Content -Path $env:GITHUB_PATH -Value $swiftBin
 
+          Get-ChildItem Env: | ForEach-Object {
+            "$($_.Name)=$($_.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Show tool versions
         shell: pwsh
         run: |
+          where.exe swift
           swift --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "swift --version failed with exit code $LASTEXITCODE."
+          }
           cargo --version
           rustc --version
 
