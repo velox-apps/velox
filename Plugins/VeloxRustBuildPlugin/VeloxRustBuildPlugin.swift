@@ -92,10 +92,12 @@ private func cargoArguments(
     "build",
     "--manifest-path", manifest.string,
     "--target-dir", cargoTargetDirectory.string,
-    "--locked",
   ]
-  if shouldUseOfflineCargo() {
+  let useOffline = shouldUseOfflineCargo()
+  if useOffline {
     arguments.append("--offline")
+  } else {
+    arguments.append("--locked")
   }
   if isReleaseConfiguration() {
     arguments.append("--release")
