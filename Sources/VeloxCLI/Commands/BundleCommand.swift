@@ -109,7 +109,7 @@ struct BundleCommand: AsyncParsableCommand {
       }
     }
 
-    #if os(macOS)
+    #if os(macOS) || os(Linux)
     if let beforeBundleCommand = effectiveConfig.build?.beforeBundleCommand {
       logger.info("[hook] Running beforeBundleCommand: \(beforeBundleCommand)")
       let exitCode = try await runShellCommand(beforeBundleCommand)
@@ -138,7 +138,7 @@ struct BundleCommand: AsyncParsableCommand {
       throw ValidationError(error.localizedDescription)
     }
     #else
-    logger.info("[bundle] App bundles are only supported on macOS")
+    logger.info("[bundle] Bundling is not supported on this platform")
     #endif
   }
 

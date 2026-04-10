@@ -24,6 +24,7 @@ public struct VeloxBundler {
     bundleConfig: BundleConfig?
   ) -> Set<BundleTarget> {
     var targets = Set(bundleConfig?.targets ?? [])
+    #if os(macOS)
     if bundleFlag || (bundleConfig?.active ?? false) {
       targets.insert(.app)
     }
@@ -33,6 +34,11 @@ public struct VeloxBundler {
     if targets.contains(.dmg) {
       targets.insert(.app)
     }
+    #elseif os(Linux)
+    if bundleFlag || (bundleConfig?.active ?? false) {
+      targets.insert(.deb)
+    }
+    #endif
     return targets
   }
 
@@ -101,8 +107,24 @@ public struct VeloxBundler {
     }
 
     return Output(bundleURL: bundleURL, dmgURL: dmgURL)
+    #elseif os(Linux)
+    var debURL: URL?
+
+    if bundleTargets.contains(.deb) {
+      logger.info("[bundle] Creating .deb package...")
+      debURL = try createDebPackage(
+        target: target,
+        config: config,
+        bundleConfig: bundleConfig,
+        configuration: configuration,
+        packageDirectory: packageDirectory
+      )
+      logger.info("[bundle] .deb package created: \(debURL?.path ?? "")")
+    }
+
+    return Output(bundleURL: debURL ?? packageDirectory, dmgURL: nil)
     #else
-    throw VeloxBundlerError("App bundles are only supported on macOS")
+    throw VeloxBundlerError("Bundling is not supported on this platform")
     #endif
   }
 
@@ -416,6 +438,359 @@ public struct VeloxBundler {
 
   private func resolvePath(_ path: String, base: URL) -> URL {
     let expanded = (path as NSString).expandingTildeInPath
+    if expanded.hasPrefix("/") {
+      return URL(fileURLWithPath: expanded)
+    }
+    return base.appendingPathComponent(path)
+  }
+
+  private func runProcess(
+    executable: String,
+    arguments: [String],
+    currentDirectory: URL? = nil
+  ) throws -> Int32 {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    process.currentDirectoryURL = currentDirectory
+
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    process.standardOutput = outputPipe
+    process.standardError = errorPipe
+
+    outputPipe.fileHandleForReading.readabilityHandler = { handle in
+      let data = handle.availableData
+      if !data.isEmpty {
+        FileHandle.standardOutput.write(data)
+      }
+    }
+
+    errorPipe.fileHandleForReading.readabilityHandler = { handle in
+      let data = handle.availableData
+      if !data.isEmpty {
+        FileHandle.standardError.write(data)
+      }
+    }
+
+    try process.run()
+    process.waitUntilExit()
+
+    outputPipe.fileHandleForReading.readabilityHandler = nil
+    errorPipe.fileHandleForReading.readabilityHandler = nil
+
+    return process.terminationStatus
+  }
+  #endif
+
+  // MARK: - Linux Bundling
+
+  #if os(Linux)
+  private func createDebPackage(
+    target: String,
+    config: VeloxConfig,
+    bundleConfig: BundleConfig?,
+    configuration: String,
+    packageDirectory: URL
+  ) throws -> URL {
+    let fm = FileManager.default
+    let buildDir = packageDirectory
+      .appendingPathComponent(".build")
+      .appendingPathComponent(configuration)
+    let executablePath = buildDir.appendingPathComponent(target)
+
+    guard fm.fileExists(atPath: executablePath.path) else {
+      throw VeloxBundlerError("Executable not found: \(executablePath.path)")
+    }
+
+    let productName = config.productName ?? target
+    let packageName = productName.lowercased().replacingOccurrences(of: " ", with: "-")
+    let version = config.version ?? "1.0.0"
+    let arch = debArchitecture()
+    let linuxConfig = bundleConfig?.linux
+
+    // Create staging directory
+    let debName = "\(packageName)_\(version)_\(arch)"
+    let stagingDir = buildDir.appendingPathComponent(debName)
+
+    // Clean previous staging
+    if fm.fileExists(atPath: stagingDir.path) {
+      try fm.removeItem(at: stagingDir)
+    }
+
+    // Create directory structure
+    let debianDir = stagingDir.appendingPathComponent("DEBIAN")
+    let binDir = stagingDir.appendingPathComponent("usr/bin")
+    let applicationsDir = stagingDir.appendingPathComponent("usr/share/applications")
+    let libDir = stagingDir.appendingPathComponent("usr/lib").appendingPathComponent(packageName)
+
+    try fm.createDirectory(at: debianDir, withIntermediateDirectories: true)
+    try fm.createDirectory(at: binDir, withIntermediateDirectories: true)
+    try fm.createDirectory(at: applicationsDir, withIntermediateDirectories: true)
+    try fm.createDirectory(at: libDir, withIntermediateDirectories: true)
+
+    // Copy executable
+    let destExecutable = binDir.appendingPathComponent(target)
+    try fm.copyItem(at: executablePath, to: destExecutable)
+    // Set executable permission
+    try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destExecutable.path)
+    logger.info("[bundle] Copied executable")
+
+    // Copy velox.json to lib directory
+    let veloxJsonSource = packageDirectory.appendingPathComponent("velox.json")
+    if fm.fileExists(atPath: veloxJsonSource.path) {
+      try fm.copyItem(at: veloxJsonSource, to: libDir.appendingPathComponent("velox.json"))
+      logger.info("[bundle] Copied velox.json")
+    }
+
+    // Copy frontend assets
+    if let frontendDist = config.build?.frontendDist {
+      let assetsSource = packageDirectory.appendingPathComponent(frontendDist)
+      if fm.fileExists(atPath: assetsSource.path) {
+        let assetsDest = libDir.appendingPathComponent(frontendDist)
+        let assetsDestParent = assetsDest.deletingLastPathComponent()
+        if !fm.fileExists(atPath: assetsDestParent.path) {
+          try fm.createDirectory(at: assetsDestParent, withIntermediateDirectories: true)
+        }
+        try fm.copyItem(at: assetsSource, to: assetsDest)
+        logger.info("[bundle] Copied frontend assets from \(frontendDist)")
+      }
+    }
+
+    // Copy additional resources
+    if let resources = bundleConfig?.resources, !resources.isEmpty {
+      for resource in resources {
+        let sourceURL = resolvePath(resource, base: packageDirectory)
+        guard fm.fileExists(atPath: sourceURL.path) else {
+          logger.warning("[bundle] Resource not found: \(sourceURL.path)")
+          continue
+        }
+        let destURL = libDir.appendingPathComponent(sourceURL.lastPathComponent)
+        try fm.copyItem(at: sourceURL, to: destURL)
+        logger.info("[bundle] Copied resource: \(sourceURL.lastPathComponent)")
+      }
+    }
+
+    // Install icons
+    try installFreedesktopIcons(
+      icon: bundleConfig?.icon,
+      packageName: packageName,
+      from: packageDirectory,
+      to: stagingDir
+    )
+
+    // Create .desktop file
+    let desktopContent = generateDesktopFile(
+      productName: productName,
+      executableName: target,
+      iconName: packageName,
+      linuxConfig: linuxConfig,
+      config: config
+    )
+    let desktopFile = applicationsDir.appendingPathComponent("\(packageName).desktop")
+    try desktopContent.write(to: desktopFile, atomically: true, encoding: .utf8)
+    logger.info("[bundle] Created .desktop file")
+
+    // Calculate installed size (in KB)
+    let installedSize = try directorySize(stagingDir) / 1024
+
+    // Create control file
+    let controlContent = generateControlFile(
+      packageName: packageName,
+      version: version,
+      arch: arch,
+      installedSize: installedSize,
+      productName: productName,
+      config: config,
+      bundleConfig: bundleConfig,
+      linuxConfig: linuxConfig
+    )
+    let controlFile = debianDir.appendingPathComponent("control")
+    try controlContent.write(to: controlFile, atomically: true, encoding: .utf8)
+    logger.info("[bundle] Created control file")
+
+    // Build .deb package using dpkg-deb
+    let debFile = buildDir.appendingPathComponent("\(debName).deb")
+    if fm.fileExists(atPath: debFile.path) {
+      try fm.removeItem(at: debFile)
+    }
+
+    let exitCode = try runProcess(
+      executable: "/usr/bin/dpkg-deb",
+      arguments: ["--build", "--root-owner-group", stagingDir.path, debFile.path]
+    )
+    if exitCode != 0 {
+      throw VeloxBundlerError("dpkg-deb failed with exit code \(exitCode)")
+    }
+
+    // Clean up staging directory
+    try? fm.removeItem(at: stagingDir)
+
+    return debFile
+  }
+
+  private func generateControlFile(
+    packageName: String,
+    version: String,
+    arch: String,
+    installedSize: UInt64,
+    productName: String,
+    config: VeloxConfig,
+    bundleConfig: BundleConfig?,
+    linuxConfig: LinuxBundleConfig?
+  ) -> String {
+    var lines = [
+      "Package: \(packageName)",
+      "Version: \(version)",
+      "Architecture: \(arch)",
+      "Installed-Size: \(installedSize)",
+    ]
+
+    if let publisher = bundleConfig?.publisher {
+      lines.append("Maintainer: \(publisher)")
+    } else {
+      lines.append("Maintainer: \(productName) developers")
+    }
+
+    if let section = linuxConfig?.section {
+      lines.append("Section: \(section)")
+    }
+
+    lines.append("Priority: \(linuxConfig?.priority ?? "optional")")
+
+    if let depends = linuxConfig?.depends, !depends.isEmpty {
+      lines.append("Depends: \(depends.joined(separator: ", "))")
+    }
+
+    let description = linuxConfig?.shortDescription ?? productName
+    lines.append("Description: \(description)")
+
+    if let longDesc = linuxConfig?.longDescription {
+      // Debian control format: long description lines must start with a space
+      for line in longDesc.components(separatedBy: "\n") {
+        if line.trimmingCharacters(in: .whitespaces).isEmpty {
+          lines.append(" .")
+        } else {
+          lines.append(" \(line)")
+        }
+      }
+    }
+
+    return lines.joined(separator: "\n") + "\n"
+  }
+
+  private func generateDesktopFile(
+    productName: String,
+    executableName: String,
+    iconName: String,
+    linuxConfig: LinuxBundleConfig?,
+    config: VeloxConfig
+  ) -> String {
+    var lines = [
+      "[Desktop Entry]",
+      "Type=Application",
+      "Name=\(productName)",
+      "Exec=\(executableName)",
+      "Icon=\(iconName)",
+      "Terminal=false",
+      "StartupWMClass=\(executableName)",
+    ]
+
+    if let categories = linuxConfig?.categories, !categories.isEmpty {
+      lines.append("Categories=\(categories.joined(separator: ";"));")
+    }
+
+    if let description = linuxConfig?.shortDescription {
+      lines.append("Comment=\(description)")
+    }
+
+    if let mimeTypes = linuxConfig?.mimeTypes, !mimeTypes.isEmpty {
+      lines.append("MimeType=\(mimeTypes.joined(separator: ";"));")
+    }
+
+    return lines.joined(separator: "\n") + "\n"
+  }
+
+  private func installFreedesktopIcons(
+    icon: BundleIcon?,
+    packageName: String,
+    from baseDirectory: URL,
+    to stagingDir: URL
+  ) throws {
+    guard let iconPaths = icon?.paths, !iconPaths.isEmpty else {
+      return
+    }
+
+    let fm = FileManager.default
+
+    for iconPath in iconPaths {
+      let sourceURL = resolvePath(iconPath, base: baseDirectory)
+      guard fm.fileExists(atPath: sourceURL.path) else {
+        logger.warning("[bundle] Icon not found: \(sourceURL.path)")
+        continue
+      }
+
+      // Try to detect PNG dimensions for proper hicolor placement
+      let size = pngDimensions(at: sourceURL) ?? (width: 256, height: 256)
+      let sizeStr = "\(size.width)x\(size.height)"
+
+      let iconDir = stagingDir
+        .appendingPathComponent("usr/share/icons/hicolor")
+        .appendingPathComponent(sizeStr)
+        .appendingPathComponent("apps")
+      try fm.createDirectory(at: iconDir, withIntermediateDirectories: true)
+
+      let ext = sourceURL.pathExtension.isEmpty ? "png" : sourceURL.pathExtension
+      let destURL = iconDir.appendingPathComponent("\(packageName).\(ext)")
+      try fm.copyItem(at: sourceURL, to: destURL)
+      logger.info("[bundle] Installed icon: \(sizeStr)/apps/\(packageName).\(ext)")
+    }
+  }
+
+  /// Read PNG file dimensions from the IHDR chunk
+  private func pngDimensions(at url: URL) -> (width: Int, height: Int)? {
+    guard let data = try? Data(contentsOf: url), data.count >= 24 else {
+      return nil
+    }
+    // PNG signature (8 bytes) + IHDR length (4 bytes) + "IHDR" (4 bytes) + width (4 bytes) + height (4 bytes)
+    let pngSignature: [UInt8] = [137, 80, 78, 71, 13, 10, 26, 10]
+    for (i, byte) in pngSignature.enumerated() {
+      if data[i] != byte { return nil }
+    }
+    let width = Int(data[16]) << 24 | Int(data[17]) << 16 | Int(data[18]) << 8 | Int(data[19])
+    let height = Int(data[20]) << 24 | Int(data[21]) << 16 | Int(data[22]) << 8 | Int(data[23])
+    return (width: width, height: height)
+  }
+
+  private func debArchitecture() -> String {
+    #if arch(x86_64)
+    return "amd64"
+    #elseif arch(arm64)
+    return "arm64"
+    #elseif arch(i386)
+    return "i386"
+    #elseif arch(arm)
+    return "armhf"
+    #else
+    return "all"
+    #endif
+  }
+
+  private func directorySize(_ url: URL) throws -> UInt64 {
+    let fm = FileManager.default
+    guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+      return 0
+    }
+    var total: UInt64 = 0
+    for case let fileURL as URL in enumerator {
+      let values = try fileURL.resourceValues(forKeys: [.fileSizeKey])
+      total += UInt64(values.fileSize ?? 0)
+    }
+    return total
+  }
+
+  private func resolvePath(_ path: String, base: URL) -> URL {
+    let expanded = NSString(string: path).expandingTildeInPath
     if expanded.hasPrefix("/") {
       return URL(fileURLWithPath: expanded)
     }

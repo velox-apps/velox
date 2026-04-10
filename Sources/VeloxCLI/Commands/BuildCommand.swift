@@ -103,7 +103,7 @@ struct BuildCommand: AsyncParsableCommand {
       || (config.bundle?.macos?.dmg?.enabled == true)
 
     if shouldBundle {
-      #if os(macOS)
+      #if os(macOS) || os(Linux)
       // Run beforeBundleCommand if configured
       if let beforeBundleCommand = config.build?.beforeBundleCommand {
         logger.info("[hook] Running beforeBundleCommand: \(beforeBundleCommand)")
@@ -129,7 +129,7 @@ struct BuildCommand: AsyncParsableCommand {
         throw ValidationError(error.localizedDescription)
       }
       #else
-      logger.info("[bundle] App bundles are only supported on macOS")
+      logger.info("[bundle] Bundling is not supported on this platform")
       #endif
     }
 
