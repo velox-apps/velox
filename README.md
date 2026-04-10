@@ -1,3 +1,5 @@
+[![CI](https://github.com/velox-apps/velox/actions/workflows/ci.yml/badge.svg)](https://github.com/velox-apps/velox/actions/workflows/ci.yml)
+
 Bringing Tauri to Swift developers.
 
 I love Rust as much as the next security paranoid person, but I do not love it to write apps,
