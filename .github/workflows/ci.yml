@@ -92,7 +92,7 @@ jobs:
 
       - name: Build Rust FFI
         shell: pwsh
-        run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml --locked
+        run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml
 
       - name: Build Swift package
         shell: pwsh
