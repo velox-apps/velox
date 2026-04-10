@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [linux]
   pull_request:
   workflow_dispatch:
 
@@ -16,14 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-2022]
+        os: [macos-14, windows-2022, ubuntu-24.04]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift (macOS)
-        if: runner.os == 'macOS'
+      - name: Setup Swift (Unix)
+        if: runner.os != 'Windows'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.2"
@@ -95,6 +95,14 @@ jobs:
             "$($_.Name)=$($_.Value)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -110,8 +118,18 @@ jobs:
           cargo --version
           rustc --version
 
-      - name: Show tool versions (Unix)
-        if: runner.os != 'Windows'
+      - name: Show tool versions (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v swift
+          swift --version
+          cargo --version
+          rustc --version
+
+      - name: Show tool versions (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -125,8 +143,8 @@ jobs:
         shell: pwsh
         run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml
 
-      - name: Build Rust FFI (Unix)
-        if: runner.os != 'Windows'
+      - name: Build Rust FFI (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -139,11 +157,27 @@ jobs:
           VELOX_CARGO_ONLINE: "1"
         run: swift build --disable-sandbox
 
-      - name: Build Swift package (Unix)
-        if: runner.os != 'Windows'
+      - name: Build Swift package (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         env:
           VELOX_CARGO_ONLINE: "1"
         run: |
           set -euo pipefail
           swift build --disable-sandbox
+
+      - name: Build Rust FFI (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --manifest-path runtime-wry-ffi/Cargo.toml
+
+      - name: Build Swift package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          VELOX_CARGO_ONLINE: "1"
+        run: |
+          set -euo pipefail
+          swift build --product velox

@@ -42,6 +42,8 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
 
       #if os(macOS)
       return NSWorkspace.shared.open(url)
+      #elseif os(Linux)
+      return Self.xdgOpen(args.url)
       #else
       return false
       #endif
@@ -61,7 +63,6 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
 
       #if os(macOS)
       if let app = args.with {
-        // Open with specific application
         let appUrl = URL(fileURLWithPath: app)
         let config = NSWorkspace.OpenConfiguration()
         let semaphore = DispatchSemaphore(value: 0)
@@ -75,6 +76,8 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       } else {
         return NSWorkspace.shared.open(url)
       }
+      #elseif os(Linux)
+      return Self.xdgOpen(args.path)
       #else
       return false
       #endif
@@ -86,13 +89,17 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       try openPathHandler(args)
     }
 
-    // Reveal file in Finder
+    // Reveal file in Finder/file manager
     let revealPathHandler: (OpenPathArgs) throws -> Bool = { args in
       let url = URL(fileURLWithPath: args.path)
 
       #if os(macOS)
       NSWorkspace.shared.activateFileViewerSelecting([url])
       return true
+      #elseif os(Linux)
+      // Open the parent directory to reveal the file
+      let parent = url.deletingLastPathComponent().path
+      return Self.xdgOpen(parent)
       #else
       return false
       #endif
@@ -106,10 +113,9 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
 
     // Open file with specific application
     let openWithHandler: (OpenWithArgs) throws -> Bool = { args in
+      #if os(macOS)
       let fileUrl = URL(fileURLWithPath: args.path)
       let appUrl = URL(fileURLWithPath: args.app)
-
-      #if os(macOS)
       let config = NSWorkspace.OpenConfiguration()
       let semaphore = DispatchSemaphore(value: 0)
       var result = false
@@ -119,6 +125,17 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       }
       semaphore.wait()
       return result
+      #elseif os(Linux)
+      // On Linux, try to open with the specified app
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: args.app)
+      task.arguments = [args.path]
+      do {
+        try task.run()
+        return true
+      } catch {
+        return false
+      }
       #else
       return false
       #endif
@@ -132,12 +149,29 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
 
     // Get default application for file
     let getDefaultAppHandler: (OpenPathArgs) throws -> String? = { args in
-      let url = URL(fileURLWithPath: args.path)
-
       #if os(macOS)
+      let url = URL(fileURLWithPath: args.path)
       if let appUrl = NSWorkspace.shared.urlForApplication(toOpen: url) {
         return appUrl.path
       }
+      #elseif os(Linux)
+      // Use xdg-mime to find default application
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-mime")
+      let mimeTask = Process()
+      mimeTask.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-mime")
+      mimeTask.arguments = ["query", "default", args.path]
+      let pipe = Pipe()
+      mimeTask.standardOutput = pipe
+      do {
+        try mimeTask.run()
+        mimeTask.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !output.isEmpty {
+          return output
+        }
+      } catch {}
       #endif
       return nil
     }
@@ -148,6 +182,20 @@ public final class OpenerPlugin: VeloxPlugin, @unchecked Sendable {
       try getDefaultAppHandler(args)
     }
   }
+
+  #if os(Linux)
+  private static func xdgOpen(_ target: String) -> Bool {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+    task.arguments = [target]
+    do {
+      try task.run()
+      return true
+    } catch {
+      return false
+    }
+  }
+  #endif
 
   // MARK: - Argument Types
 

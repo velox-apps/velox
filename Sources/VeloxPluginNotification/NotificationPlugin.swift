@@ -80,6 +80,9 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       }
       semaphore.wait()
       return result
+      #elseif os(Linux)
+      // notify-send doesn't require permission on Linux
+      return true
       #else
       return false
       #endif
@@ -97,6 +100,8 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       }
       semaphore.wait()
       return result
+      #elseif os(Linux)
+      return "granted"
       #else
       return "denied"
       #endif
@@ -133,6 +138,24 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       }
       semaphore.wait()
       return result
+      #elseif os(Linux)
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: "/usr/bin/notify-send")
+      var arguments = [args.title]
+      if let body = args.body {
+        arguments.append(body)
+      }
+      if let icon = args.icon {
+        arguments.insert(contentsOf: ["-i", icon], at: 0)
+      }
+      task.arguments = arguments
+      do {
+        try task.run()
+        task.waitUntilExit()
+        return task.terminationStatus == 0
+      } catch {
+        return false
+      }
       #else
       return false
       #endif
@@ -144,6 +167,7 @@ public final class NotificationPlugin: VeloxPlugin, @unchecked Sendable {
       let center = try self.notificationCenterOrThrow()
       center.removeAllPendingNotificationRequests()
       #endif
+      // No equivalent on Linux — notify-send notifications are fire-and-forget
       return EmptyResponse()
     }
 

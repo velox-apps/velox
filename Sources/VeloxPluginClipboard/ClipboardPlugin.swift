@@ -46,6 +46,8 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.setString(args.text, forType: .string)
+      #elseif os(Linux)
+      Self.linuxClipboardWrite(args.text)
       #endif
       return EmptyResponse()
     }
@@ -54,6 +56,8 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
     commands.register("readText", returning: String?.self) { _ in
       #if os(macOS)
       return NSPasteboard.general.string(forType: .string)
+      #elseif os(Linux)
+      return Self.linuxClipboardRead()
       #else
       return nil
       #endif
@@ -64,16 +68,14 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
       #if os(macOS)
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
-
-      // Write HTML
       if let htmlData = args.html.data(using: .utf8) {
         pasteboard.setData(htmlData, forType: .html)
       }
-
-      // Also write plain text fallback
       if let altText = args.altText {
         pasteboard.setString(altText, forType: .string)
       }
+      #elseif os(Linux)
+      Self.linuxClipboardWrite(args.altText ?? args.html)
       #endif
       return EmptyResponse()
     }
@@ -85,6 +87,8 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
       if let data = pasteboard.data(forType: .html) {
         return String(data: data, encoding: .utf8)
       }
+      #elseif os(Linux)
+      return Self.linuxClipboardRead()
       #endif
       return nil
     }
@@ -93,6 +97,8 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
     commands.register("clear", returning: EmptyResponse.self) { _ in
       #if os(macOS)
       NSPasteboard.general.clearContents()
+      #elseif os(Linux)
+      Self.linuxClipboardWrite("")
       #endif
       return EmptyResponse()
     }
@@ -101,11 +107,64 @@ public final class ClipboardPlugin: VeloxPlugin, @unchecked Sendable {
     commands.register("hasText", returning: Bool.self) { _ in
       #if os(macOS)
       return NSPasteboard.general.string(forType: .string) != nil
+      #elseif os(Linux)
+      return Self.linuxClipboardRead() != nil
       #else
       return false
       #endif
     }
   }
+
+  // MARK: - Linux clipboard helpers
+
+  #if os(Linux)
+  private static func linuxClipboardWrite(_ text: String) {
+    // Try xclip first, then xsel, then wl-copy (Wayland)
+    for (tool, args) in [
+      ("/usr/bin/xclip", ["-selection", "clipboard"]),
+      ("/usr/bin/xsel", ["--clipboard", "--input"]),
+      ("/usr/bin/wl-copy", [] as [String]),
+    ] {
+      if FileManager.default.fileExists(atPath: tool) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: tool)
+        task.arguments = args
+        let pipe = Pipe()
+        task.standardInput = pipe
+        do {
+          try task.run()
+          pipe.fileHandleForWriting.write(Data(text.utf8))
+          pipe.fileHandleForWriting.closeFile()
+          task.waitUntilExit()
+          return
+        } catch {}
+      }
+    }
+  }
+
+  private static func linuxClipboardRead() -> String? {
+    for (tool, args) in [
+      ("/usr/bin/xclip", ["-selection", "clipboard", "-o"]),
+      ("/usr/bin/xsel", ["--clipboard", "--output"]),
+      ("/usr/bin/wl-paste", [] as [String]),
+    ] {
+      if FileManager.default.fileExists(atPath: tool) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: tool)
+        task.arguments = args
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        do {
+          try task.run()
+          task.waitUntilExit()
+          let data = pipe.fileHandleForReading.readDataToEndOfFile()
+          return String(data: data, encoding: .utf8)
+        } catch {}
+      }
+    }
+    return nil
+  }
+  #endif
 
   // MARK: - Argument Types
 

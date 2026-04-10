@@ -56,8 +56,7 @@ public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
       if let handler = relaunchHandler {
         handler()
       } else {
-        // Default relaunch implementation for macOS
-        #if os(macOS)
+        #if os(macOS) || os(Linux)
         let executablePath = Bundle.main.executablePath ?? CommandLine.arguments[0]
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executablePath)
@@ -112,6 +111,11 @@ public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.velox.app"
         return path.appendingPathComponent(bundleId).path
       }
+      #elseif os(Linux)
+      let appName = Bundle.main.bundleIdentifier ?? "com.velox.app"
+      let base = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+        ?? NSHomeDirectory() + "/.local/share"
+      return base + "/" + appName
       #endif
       return nil
     }
@@ -124,6 +128,11 @@ public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.velox.app"
         return path.appendingPathComponent(bundleId).path
       }
+      #elseif os(Linux)
+      let appName = Bundle.main.bundleIdentifier ?? "com.velox.app"
+      let base = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
+        ?? NSHomeDirectory() + "/.config"
+      return base + "/" + appName
       #endif
       return nil
     }
@@ -136,6 +145,11 @@ public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.velox.app"
         return path.appendingPathComponent(bundleId).path
       }
+      #elseif os(Linux)
+      let appName = Bundle.main.bundleIdentifier ?? "com.velox.app"
+      let base = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
+        ?? NSHomeDirectory() + "/.cache"
+      return base + "/" + appName
       #endif
       return nil
     }
@@ -148,6 +162,11 @@ public final class ProcessPlugin: VeloxPlugin, @unchecked Sendable {
         let bundleId = Bundle.main.bundleIdentifier ?? "com.velox.app"
         return path.appendingPathComponent("Logs").appendingPathComponent(bundleId).path
       }
+      #elseif os(Linux)
+      let appName = Bundle.main.bundleIdentifier ?? "com.velox.app"
+      let base = ProcessInfo.processInfo.environment["XDG_STATE_HOME"]
+        ?? NSHomeDirectory() + "/.local/state"
+      return base + "/" + appName
       #endif
       return nil
     }

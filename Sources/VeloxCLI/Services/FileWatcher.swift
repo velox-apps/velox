@@ -248,6 +248,202 @@ final class FileWatcher: @unchecked Sendable {
     return true
   }
 }
+#elseif os(Linux)
+import Glibc
+
+final class FileWatcher: @unchecked Sendable {
+  private let paths: [String]
+  private let debounceInterval: TimeInterval
+  private var inotifyFd: Int32 = -1
+  private var watchDescriptors: [Int32: String] = [:]
+
+  /// Patterns to ignore (simple suffix matching)
+  private let ignorePatterns = [
+    ".build/",
+    ".git/",
+    "node_modules/",
+    ".DS_Store",
+    ".swp",
+    "~",
+  ]
+
+  /// Frontend file extensions to watch
+  private let frontendExtensions = [
+    ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
+    ".json", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+    ".woff", ".woff2", ".ttf", ".eot",
+  ]
+
+  init(paths: [String], debounceInterval: TimeInterval = 1.0) {
+    self.paths = paths.map { path in
+      if path.hasPrefix("/") {
+        return path
+      }
+      return FileManager.default.currentDirectoryPath + "/" + path
+    }
+    self.debounceInterval = debounceInterval
+  }
+
+  deinit {
+    cleanup()
+  }
+
+  func waitForChange() async -> FileChangeResult {
+    logger.debug("Starting inotify file watcher for paths: \(paths)")
+    return await withCheckedContinuation { (cont: CheckedContinuation<FileChangeResult, Never>) in
+      DispatchQueue.global().async { [self] in
+        let result = self.watch()
+        cont.resume(returning: result)
+      }
+    }
+  }
+
+  private func watch() -> FileChangeResult {
+    inotifyFd = inotify_init()
+    guard inotifyFd >= 0 else {
+      logger.error("Failed to initialize inotify")
+      return FileChangeResult(hasBackendChanges: true, hasFrontendChanges: false, hasConfigChanges: false, changedPaths: [])
+    }
+
+    // Recursively add watches for all directories
+    for path in paths {
+      addWatchesRecursively(path)
+    }
+
+    let mask: UInt32 = UInt32(IN_MODIFY) | UInt32(IN_CREATE) | UInt32(IN_DELETE) | UInt32(IN_MOVED_TO)
+    let bufferSize = 4096
+    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: bufferSize)
+    defer {
+      buffer.deallocate()
+      cleanup()
+    }
+
+    var pendingChanges: [String] = []
+    var lastEventTime = Date.distantPast
+
+    while true {
+      let bytesRead = read(inotifyFd, buffer, bufferSize)
+      if bytesRead <= 0 { break }
+
+      var offset = 0
+      while offset < bytesRead {
+        let event = buffer.advanced(by: offset).withMemoryRebound(to: inotify_event.self, capacity: 1) { $0.pointee }
+        let nameLength = Int(event.len)
+
+        if nameLength > 0 {
+          let namePtr = buffer.advanced(by: offset + MemoryLayout<inotify_event>.size)
+          let name = String(cString: namePtr)
+          let dir = watchDescriptors[event.wd] ?? ""
+          let fullPath = dir.isEmpty ? name : "\(dir)/\(name)"
+
+          if !shouldIgnore(path: fullPath) {
+            pendingChanges.append(fullPath)
+          }
+        }
+
+        offset += MemoryLayout<inotify_event>.size + nameLength
+      }
+
+      guard !pendingChanges.isEmpty else { continue }
+
+      let now = Date()
+      let timeSinceLast = now.timeIntervalSince(lastEventTime)
+      if timeSinceLast < debounceInterval {
+        continue
+      }
+      lastEventTime = now
+
+      return analyzeChanges(pendingChanges)
+    }
+
+    return FileChangeResult(hasBackendChanges: true, hasFrontendChanges: false, hasConfigChanges: false, changedPaths: pendingChanges)
+  }
+
+  private func addWatchesRecursively(_ path: String) {
+    let mask: UInt32 = UInt32(IN_MODIFY) | UInt32(IN_CREATE) | UInt32(IN_DELETE) | UInt32(IN_MOVED_TO)
+    let wd = inotify_add_watch(inotifyFd, path, mask)
+    if wd >= 0 {
+      watchDescriptors[wd] = path
+    }
+
+    // Recursively watch subdirectories
+    let fm = FileManager.default
+    guard let enumerator = fm.enumerator(atPath: path) else { return }
+    while let item = enumerator.nextObject() as? String {
+      let fullPath = "\(path)/\(item)"
+      var isDir: ObjCBool = false
+      if fm.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue {
+        if shouldIgnore(path: fullPath) {
+          enumerator.skipDescendants()
+          continue
+        }
+        let subWd = inotify_add_watch(inotifyFd, fullPath, mask)
+        if subWd >= 0 {
+          watchDescriptors[subWd] = fullPath
+        }
+      }
+    }
+  }
+
+  private func cleanup() {
+    if inotifyFd >= 0 {
+      for wd in watchDescriptors.keys {
+        inotify_rm_watch(inotifyFd, wd)
+      }
+      close(inotifyFd)
+      inotifyFd = -1
+      watchDescriptors.removeAll()
+    }
+  }
+
+  private func analyzeChanges(_ paths: [String]) -> FileChangeResult {
+    var hasBackend = false
+    var hasFrontend = false
+    var hasConfig = false
+
+    for path in paths {
+      let filename = URL(fileURLWithPath: path).lastPathComponent
+
+      if filename == "velox.json" {
+        hasConfig = true
+      } else if path.hasSuffix(".swift") {
+        hasBackend = true
+      } else {
+        for ext in frontendExtensions {
+          if path.hasSuffix(ext) {
+            hasFrontend = true
+            break
+          }
+        }
+      }
+    }
+
+    return FileChangeResult(
+      hasBackendChanges: hasBackend,
+      hasFrontendChanges: hasFrontend,
+      hasConfigChanges: hasConfig,
+      changedPaths: paths
+    )
+  }
+
+  private func shouldIgnore(path: String) -> Bool {
+    for pattern in ignorePatterns {
+      if path.contains(pattern) {
+        return true
+      }
+    }
+
+    let filename = URL(fileURLWithPath: path).lastPathComponent
+
+    if filename == "velox.json" { return false }
+    if path.hasSuffix(".swift") { return false }
+    for ext in frontendExtensions {
+      if path.hasSuffix(ext) { return false }
+    }
+
+    return true
+  }
+}
 #elseif os(Windows)
 final class FileWatcher: @unchecked Sendable {
   init(paths: [String], debounceInterval: TimeInterval = 1.0) {}
