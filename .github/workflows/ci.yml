@@ -98,7 +98,8 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Show tool versions
+      - name: Show tool versions (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           where.exe swift
@@ -109,12 +110,40 @@ jobs:
           cargo --version
           rustc --version
 
-      - name: Build Rust FFI
+      - name: Show tool versions (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v swift
+          swift --version
+          cargo --version
+          rustc --version
+
+      - name: Build Rust FFI (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml
 
-      - name: Build Swift package
+      - name: Build Rust FFI (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --manifest-path runtime-wry-ffi/Cargo.toml
+
+      - name: Build Swift package (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         env:
           VELOX_CARGO_ONLINE: "1"
         run: swift build --disable-sandbox
+
+      - name: Build Swift package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VELOX_CARGO_ONLINE: "1"
+        run: |
+          set -euo pipefail
+          swift build --disable-sandbox
