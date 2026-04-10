@@ -16,8 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-#        os: [macos-14, windows-2022, ubuntu-24.04]
-        os: [ubuntu-24.04]
+        os: [macos-14, windows-2022, ubuntu-24.04]
 
     steps:
       - name: Checkout
