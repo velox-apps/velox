@@ -32,7 +32,22 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          winget install --id Swift.Toolchain --exact --source winget --accept-package-agreements --accept-source-agreements
+          $swiftVersion = "6.2.4"
+          $swiftSha256 = "222501D4A0EF6EC3B2F08B3E0055140BB3A5136527542239BB925F979689F4AD"
+          $installer = Join-Path $env:RUNNER_TEMP "swift-$swiftVersion-windows.exe"
+          $url = "https://download.swift.org/swift-$swiftVersion-release/windows10/swift-$swiftVersion-RELEASE/swift-$swiftVersion-RELEASE-windows10.exe"
+
+          Invoke-WebRequest -Uri $url -OutFile $installer
+
+          $actualSha256 = (Get-FileHash $installer -Algorithm SHA256).Hash
+          if ($actualSha256 -ne $swiftSha256) {
+            throw "Swift installer checksum mismatch. Expected $swiftSha256, got $actualSha256."
+          }
+
+          $process = Start-Process -FilePath $installer -ArgumentList '/quiet', '/norestart' -Wait -PassThru
+          if ($process.ExitCode -notin 0, 3010) {
+            throw "Swift installer failed with exit code $($process.ExitCode)."
+          }
 
           $swift = Get-Command swift.exe -ErrorAction SilentlyContinue
 
