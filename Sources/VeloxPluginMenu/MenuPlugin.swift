@@ -6,7 +6,7 @@ import Foundation
 import VeloxRuntime
 import VeloxRuntimeWry
 
-#if os(macOS)
+#if os(macOS) || os(Linux)
 public final class MenuPlugin: VeloxPlugin, @unchecked Sendable {
   public let name = "menu"
 

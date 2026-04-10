@@ -95,6 +95,94 @@ public final class DialogPlugin: VeloxPlugin, @unchecked Sendable {
       }
       return deferred.pending
     }
+    #elseif os(Linux)
+    // On Linux, use VeloxRuntimeWry FFI dialog functions (backed by rfd/tinyfiledialogs/GTK)
+    commands.register("open", args: OpenArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.global().async {
+        let filters = (args.filters ?? []).map {
+          VeloxRuntimeWry.Dialog.Filter(label: $0.name, extensions: $0.extensions)
+        }
+        let options = VeloxRuntimeWry.Dialog.OpenOptions(
+          title: args.title,
+          defaultURL: args.defaultPath.flatMap { URL(fileURLWithPath: $0) },
+          filters: filters,
+          allowDirectories: args.directory ?? false,
+          allowMultiple: args.multiple ?? false
+        )
+        let result = VeloxRuntimeWry.Dialog.open(options)
+        let paths = result.map { $0.path }
+        if paths.isEmpty {
+          deferred.responder.resolve(Optional<String>.none as Any)
+        } else if args.multiple == true {
+          deferred.responder.resolve(paths)
+        } else {
+          deferred.responder.resolve(paths.first)
+        }
+      }
+      return deferred.pending
+    }
+
+    commands.register("save", args: SaveArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.global().async {
+        let filters = (args.filters ?? []).map {
+          VeloxRuntimeWry.Dialog.Filter(label: $0.name, extensions: $0.extensions)
+        }
+        let options = VeloxRuntimeWry.Dialog.SaveOptions(
+          title: args.title,
+          defaultURL: args.defaultPath.flatMap { URL(fileURLWithPath: $0) },
+          filters: filters
+        )
+        let result = VeloxRuntimeWry.Dialog.save(options)
+        deferred.responder.resolve(result?.path)
+      }
+      return deferred.pending
+    }
+
+    commands.register("message", args: MessageArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.global().async {
+        let options = VeloxRuntimeWry.Dialog.MessageOptions(
+          title: args.title,
+          message: args.message,
+          level: .info
+        )
+        let result = VeloxRuntimeWry.Dialog.message(options)
+        deferred.responder.resolve(result)
+      }
+      return deferred.pending
+    }
+
+    commands.register("ask", args: AskArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.global().async {
+        let options = VeloxRuntimeWry.Dialog.MessageOptions(
+          title: args.title,
+          message: args.message,
+          level: .info,
+          buttons: .yesNo
+        )
+        let result = VeloxRuntimeWry.Dialog.message(options)
+        deferred.responder.resolve(result)
+      }
+      return deferred.pending
+    }
+
+    commands.register("confirm", args: ConfirmArgs.self, returning: DeferredCommandResponse.self) { args, context in
+      let deferred = try context.deferResponse()
+      DispatchQueue.global().async {
+        let options = VeloxRuntimeWry.Dialog.MessageOptions(
+          title: args.title,
+          message: args.message,
+          level: .info,
+          buttons: .okCancel
+        )
+        let result = VeloxRuntimeWry.Dialog.message(options)
+        deferred.responder.resolve(result)
+      }
+      return deferred.pending
+    }
     #endif
   }
 

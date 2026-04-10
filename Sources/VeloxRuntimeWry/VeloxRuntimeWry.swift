@@ -1493,7 +1493,7 @@ public extension VeloxRuntimeWry {
       let box = Unmanaged<EventLoopCallback>.fromOpaque(userData).takeUnretainedValue()
       let json = event.map { String(cString: $0) } ?? "{}"
       let parsedEvent = Event(fromJSON: json)
-#if os(macOS)
+#if os(macOS) || os(Linux)
       if case .menuEvent(let menuId) = parsedEvent {
         MenuEventMonitor.shared.emit(menuId: menuId)
       }
@@ -2836,7 +2836,7 @@ public final class EventLoopProxyAdapter: VeloxEventLoopProxy {
   }
 }
 
-#if os(macOS)
+#if os(macOS) || os(Linux)
 public final class MenuEventMonitor: @unchecked Sendable {
   public typealias Handler = @Sendable (String) -> Void
 

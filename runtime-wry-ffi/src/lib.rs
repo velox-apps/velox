@@ -3,16 +3,16 @@ use std::os::raw::{c_char, c_void};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::ptr;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::{cell::RefCell, thread::LocalKey};
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use tray_icon::{menu::Menu as TrayMenu, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use muda::{
     about_metadata::AboutMetadata,
     accelerator::Accelerator,
@@ -43,6 +43,10 @@ use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, Messag
 use tao::platform::macos::{
     ActivationPolicy, EventLoopWindowTargetExtMacOS, WindowBuilderExtMacOS, WindowExtMacOS,
 };
+#[cfg(target_os = "linux")]
+use gtk::prelude::*;
+#[cfg(target_os = "linux")]
+use tao::platform::unix::WindowExtUnix;
 #[cfg(target_os = "windows")]
 use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 #[cfg(target_os = "windows")]
@@ -75,9 +79,9 @@ thread_local! {
 enum VeloxUserEvent {
     Exit,
     Custom(String),
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     Menu(String),
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     Tray(VeloxTrayEvent),
 }
 
@@ -139,7 +143,7 @@ pub enum VeloxActivationPolicy {
     Prohibited = 2,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxMenuBarHandle {
     menu: Menu,
     submenus: Vec<Rc<RefCell<Submenu>>>,
@@ -147,91 +151,91 @@ pub struct VeloxMenuBarHandle {
     identifier: CString,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxSubmenuHandle {
     submenu: Rc<RefCell<Submenu>>,
     identifier: CString,
     items: Vec<MenuItemKind>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxMenuItemHandle {
     item: MenuItem,
     identifier: CString,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxCheckMenuItemHandle {
     item: CheckMenuItem,
     identifier: CString,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxIconMenuItemHandle {
     item: IconMenuItem,
     identifier: CString,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxPredefinedMenuItemHandle {
     item: PredefinedMenuItem,
     identifier: CString,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxSeparatorHandle {
     item: PredefinedMenuItem,
     identifier: CString,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxMenuBarHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxSubmenuHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxMenuItemHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxCheckMenuItemHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxIconMenuItemHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxPredefinedMenuItemHandle {
     _private: (),
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxSeparatorHandle {
     _private: (),
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub struct VeloxTrayHandle {
     tray: TrayIcon,
     menu: Option<TrayMenu>,
     identifier: CString,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub struct VeloxTrayHandle {
     _private: (),
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Debug, Clone)]
 struct VeloxTrayEvent {
     identifier: String,
@@ -242,7 +246,7 @@ struct VeloxTrayEvent {
     button_state: Option<String>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Debug, Clone, Copy)]
 enum VeloxTrayEventKind {
     Click,
@@ -252,7 +256,7 @@ enum VeloxTrayEventKind {
     Leave,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Debug, Clone, Copy)]
 struct VeloxTrayRect {
     origin_x: f64,
@@ -261,7 +265,7 @@ struct VeloxTrayRect {
     height: f64,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl From<tray_icon::Rect> for VeloxTrayRect {
     fn from(rect: tray_icon::Rect) -> Self {
         Self {
@@ -273,7 +277,7 @@ impl From<tray_icon::Rect> for VeloxTrayRect {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl From<tray_icon::TrayIconEvent> for VeloxTrayEvent {
     fn from(event: tray_icon::TrayIconEvent) -> Self {
         match event {
@@ -1150,7 +1154,7 @@ fn write_string_to_buffer(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn guard_panic<T>(f: impl FnOnce() -> *mut T) -> *mut T {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(ptr) => ptr,
@@ -1240,7 +1244,7 @@ pub extern "C" fn velox_runtime_wry_webview_version() -> *const c_char {
 pub extern "C" fn velox_event_loop_new() -> *mut VeloxEventLoop {
     let event_loop = EventLoopBuilder::<VeloxUserEvent>::with_user_event().build();
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let proxy = event_loop.create_proxy();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
@@ -1260,9 +1264,9 @@ pub extern "C" fn velox_event_loop_new() -> *mut VeloxEventLoop {
 pub extern "C" fn velox_event_loop_free(event_loop: *mut VeloxEventLoop) {
     if !event_loop.is_null() {
         unsafe { drop(Box::from_raw(event_loop)) };
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         MenuEvent::set_event_handler::<fn(MenuEvent)>(None);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         TrayIconEvent::set_event_handler::<fn(TrayIconEvent)>(None);
     }
 }
@@ -1407,19 +1411,19 @@ pub extern "C" fn velox_event_loop_show_application(event_loop: *mut VeloxEventL
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn accelerator_from_ptr(ptr: *const c_char) -> Option<Accelerator> {
     opt_cstring(ptr)?.parse().ok()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn native_icon_from_ptr(ptr: *const c_char) -> Option<NativeIcon> {
     let value = opt_cstring(ptr)?;
     let quoted = format!("\"{}\"", value);
     serde_json::from_str(&quoted).ok()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub enum VeloxMenuItemKind {
@@ -1430,7 +1434,7 @@ pub enum VeloxMenuItemKind {
     Submenu = 4,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_new() -> *mut VeloxMenuBarHandle {
     guard_panic(|| {
@@ -1445,7 +1449,7 @@ pub extern "C" fn velox_menu_bar_new() -> *mut VeloxMenuBarHandle {
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_new_with_id(id: *const c_char) -> *mut VeloxMenuBarHandle {
     guard_panic(|| {
@@ -1461,7 +1465,7 @@ pub extern "C" fn velox_menu_bar_new_with_id(id: *const c_char) -> *mut VeloxMen
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_free(menu: *mut VeloxMenuBarHandle) {
     if !menu.is_null() {
@@ -1469,7 +1473,7 @@ pub extern "C" fn velox_menu_bar_free(menu: *mut VeloxMenuBarHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_identifier(menu: *mut VeloxMenuBarHandle) -> *const c_char {
     let Some(menu) = (unsafe { menu.as_ref() }) else {
@@ -1478,7 +1482,7 @@ pub extern "C" fn velox_menu_bar_identifier(menu: *mut VeloxMenuBarHandle) -> *c
     menu.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_append_submenu(
     menu: *mut VeloxMenuBarHandle,
@@ -1507,7 +1511,7 @@ pub extern "C" fn velox_menu_bar_append_submenu(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_append(
     menu: *mut VeloxMenuBarHandle,
@@ -1579,7 +1583,7 @@ pub extern "C" fn velox_menu_bar_append(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_prepend(
     menu: *mut VeloxMenuBarHandle,
@@ -1651,7 +1655,7 @@ pub extern "C" fn velox_menu_bar_prepend(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_insert(
     menu: *mut VeloxMenuBarHandle,
@@ -1725,7 +1729,7 @@ pub extern "C" fn velox_menu_bar_insert(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_remove(
     menu: *mut VeloxMenuBarHandle,
@@ -1771,7 +1775,7 @@ pub extern "C" fn velox_menu_bar_remove(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_bar_remove_at(
     menu: *mut VeloxMenuBarHandle,
@@ -1825,7 +1829,46 @@ pub extern "C" fn velox_menu_bar_popup(
     unsafe { menu.menu.show_context_menu_for_nsview(window.window.ns_view(), position) }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_set_app_menu(_menu: *mut VeloxMenuBarHandle) -> bool {
+    // No NSApp equivalent on Linux — menus are per-window via GTK
+    false
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn velox_menu_bar_popup(
+    menu: *mut VeloxMenuBarHandle,
+    window: *mut VeloxWindowHandle,
+    x: f64,
+    y: f64,
+    has_position: bool,
+    is_logical: bool,
+) -> bool {
+    let Some(menu) = (unsafe { menu.as_ref() }) else {
+        return false;
+    };
+    let Some(window) = (unsafe { window.as_ref() }) else {
+        return false;
+    };
+
+    let position = if has_position {
+        if is_logical {
+            Some(muda::dpi::Position::Logical(LogicalPosition { x, y }))
+        } else {
+            let px = x.round() as i32;
+            let py = y.round() as i32;
+            Some(muda::dpi::Position::Physical(PhysicalPosition { x: px, y: py }))
+        }
+    } else {
+        None
+    };
+
+    unsafe { menu.menu.show_context_menu_for_gtk_window(window.window.gtk_window().as_ref(), position) }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_new(
     title: *const c_char,
@@ -1844,7 +1887,7 @@ pub extern "C" fn velox_submenu_new(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_new_with_id(
     id: *const c_char,
@@ -1864,7 +1907,7 @@ pub extern "C" fn velox_submenu_new_with_id(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_free(submenu: *mut VeloxSubmenuHandle) {
     if !submenu.is_null() {
@@ -1872,7 +1915,7 @@ pub extern "C" fn velox_submenu_free(submenu: *mut VeloxSubmenuHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_identifier(submenu: *mut VeloxSubmenuHandle) -> *const c_char {
     let Some(submenu) = (unsafe { submenu.as_ref() }) else {
@@ -1881,7 +1924,7 @@ pub extern "C" fn velox_submenu_identifier(submenu: *mut VeloxSubmenuHandle) -> 
     submenu.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_text(submenu: *mut VeloxSubmenuHandle) -> *const c_char {
     guard_panic_value(|| {
@@ -1892,7 +1935,7 @@ pub extern "C" fn velox_submenu_text(submenu: *mut VeloxSubmenuHandle) -> *const
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_set_text(
     submenu: *mut VeloxSubmenuHandle,
@@ -1908,7 +1951,7 @@ pub extern "C" fn velox_submenu_set_text(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_is_enabled(submenu: *mut VeloxSubmenuHandle) -> bool {
     guard_panic_bool(|| {
@@ -1919,7 +1962,7 @@ pub extern "C" fn velox_submenu_is_enabled(submenu: *mut VeloxSubmenuHandle) -> 
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_set_enabled(
     submenu: *mut VeloxSubmenuHandle,
@@ -1932,7 +1975,7 @@ pub extern "C" fn velox_submenu_set_enabled(
     true
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_set_native_icon(
     submenu: *mut VeloxSubmenuHandle,
@@ -1958,6 +2001,14 @@ pub extern "C" fn velox_submenu_set_as_windows_menu_for_nsapp(
     true
 }
 
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_as_windows_menu_for_nsapp(
+    _submenu: *mut VeloxSubmenuHandle,
+) -> bool {
+    false
+}
+
 #[cfg(target_os = "macos")]
 #[no_mangle]
 pub extern "C" fn velox_submenu_set_as_help_menu_for_nsapp(
@@ -1968,6 +2019,14 @@ pub extern "C" fn velox_submenu_set_as_help_menu_for_nsapp(
     };
     submenu.submenu.borrow().set_as_help_menu_for_nsapp();
     true
+}
+
+#[cfg(not(target_os = "macos"))]
+#[no_mangle]
+pub extern "C" fn velox_submenu_set_as_help_menu_for_nsapp(
+    _submenu: *mut VeloxSubmenuHandle,
+) -> bool {
+    false
 }
 
 #[cfg(target_os = "macos")]
@@ -2002,7 +2061,39 @@ pub extern "C" fn velox_submenu_popup(
     unsafe { submenu.submenu.borrow().show_context_menu_for_nsview(window.window.ns_view(), position) }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn velox_submenu_popup(
+    submenu: *mut VeloxSubmenuHandle,
+    window: *mut VeloxWindowHandle,
+    x: f64,
+    y: f64,
+    has_position: bool,
+    is_logical: bool,
+) -> bool {
+    let Some(submenu) = (unsafe { submenu.as_ref() }) else {
+        return false;
+    };
+    let Some(window) = (unsafe { window.as_ref() }) else {
+        return false;
+    };
+
+    let position = if has_position {
+        if is_logical {
+            Some(muda::dpi::Position::Logical(LogicalPosition { x, y }))
+        } else {
+            let px = x.round() as i32;
+            let py = y.round() as i32;
+            Some(muda::dpi::Position::Physical(PhysicalPosition { x: px, y: py }))
+        }
+    } else {
+        None
+    };
+
+    unsafe { submenu.submenu.borrow().show_context_menu_for_gtk_window(window.window.gtk_window().as_ref(), position) }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_append_item(
     submenu: *mut VeloxSubmenuHandle,
@@ -2023,7 +2114,7 @@ pub extern "C" fn velox_submenu_append_item(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_append(
     submenu: *mut VeloxSubmenuHandle,
@@ -2094,7 +2185,7 @@ pub extern "C" fn velox_submenu_append(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_prepend(
     submenu: *mut VeloxSubmenuHandle,
@@ -2165,7 +2256,7 @@ pub extern "C" fn velox_submenu_prepend(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_insert(
     submenu: *mut VeloxSubmenuHandle,
@@ -2238,7 +2329,7 @@ pub extern "C" fn velox_submenu_insert(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_remove(
     submenu: *mut VeloxSubmenuHandle,
@@ -2284,7 +2375,7 @@ pub extern "C" fn velox_submenu_remove(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_remove_at(
     submenu: *mut VeloxSubmenuHandle,
@@ -2296,7 +2387,7 @@ pub extern "C" fn velox_submenu_remove_at(
     submenu.submenu.borrow().remove_at(position).is_some()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_new(
     id: *const c_char,
@@ -2317,7 +2408,7 @@ pub extern "C" fn velox_menu_item_new(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_free(item: *mut VeloxMenuItemHandle) {
     if !item.is_null() {
@@ -2325,7 +2416,7 @@ pub extern "C" fn velox_menu_item_free(item: *mut VeloxMenuItemHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_set_enabled(
     item: *mut VeloxMenuItemHandle,
@@ -2338,7 +2429,7 @@ pub extern "C" fn velox_menu_item_set_enabled(
     true
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_is_enabled(item: *mut VeloxMenuItemHandle) -> bool {
     guard_panic_bool(|| {
@@ -2349,7 +2440,7 @@ pub extern "C" fn velox_menu_item_is_enabled(item: *mut VeloxMenuItemHandle) -> 
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_text(item: *mut VeloxMenuItemHandle) -> *const c_char {
     guard_panic_value(|| {
@@ -2360,7 +2451,7 @@ pub extern "C" fn velox_menu_item_text(item: *mut VeloxMenuItemHandle) -> *const
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_set_text(
     item: *mut VeloxMenuItemHandle,
@@ -2376,7 +2467,7 @@ pub extern "C" fn velox_menu_item_set_text(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_set_accelerator(
     item: *mut VeloxMenuItemHandle,
@@ -2392,7 +2483,7 @@ pub extern "C" fn velox_menu_item_set_accelerator(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> *const c_char {
     let Some(item) = (unsafe { item.as_ref() }) else {
@@ -2403,7 +2494,7 @@ pub extern "C" fn velox_menu_item_identifier(item: *mut VeloxMenuItemHandle) -> 
 
 // MARK: - Icon Menu Item
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_new(
     id: *const c_char,
@@ -2432,7 +2523,7 @@ pub extern "C" fn velox_icon_menu_item_new(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_free(item: *mut VeloxIconMenuItemHandle) {
     if !item.is_null() {
@@ -2440,7 +2531,7 @@ pub extern "C" fn velox_icon_menu_item_free(item: *mut VeloxIconMenuItemHandle) 
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_identifier(item: *mut VeloxIconMenuItemHandle) -> *const c_char {
     let Some(item) = (unsafe { item.as_ref() }) else {
@@ -2449,7 +2540,7 @@ pub extern "C" fn velox_icon_menu_item_identifier(item: *mut VeloxIconMenuItemHa
     item.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_text(item: *mut VeloxIconMenuItemHandle) -> *const c_char {
     guard_panic_value(|| {
@@ -2460,7 +2551,7 @@ pub extern "C" fn velox_icon_menu_item_text(item: *mut VeloxIconMenuItemHandle) 
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_set_text(
     item: *mut VeloxIconMenuItemHandle,
@@ -2476,7 +2567,7 @@ pub extern "C" fn velox_icon_menu_item_set_text(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_is_enabled(item: *mut VeloxIconMenuItemHandle) -> bool {
     guard_panic_bool(|| {
@@ -2487,7 +2578,7 @@ pub extern "C" fn velox_icon_menu_item_is_enabled(item: *mut VeloxIconMenuItemHa
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_set_enabled(
     item: *mut VeloxIconMenuItemHandle,
@@ -2500,7 +2591,7 @@ pub extern "C" fn velox_icon_menu_item_set_enabled(
     true
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_set_accelerator(
     item: *mut VeloxIconMenuItemHandle,
@@ -2516,7 +2607,7 @@ pub extern "C" fn velox_icon_menu_item_set_accelerator(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_icon_menu_item_set_native_icon(
     item: *mut VeloxIconMenuItemHandle,
@@ -2532,7 +2623,7 @@ pub extern "C" fn velox_icon_menu_item_set_native_icon(
 
 // MARK: - Predefined Menu Item
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct VeloxAboutMetadata {
@@ -2550,7 +2641,7 @@ struct VeloxAboutMetadata {
     icon: Option<serde_json::Value>,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn about_metadata_from_json(json: *const c_char) -> Option<AboutMetadata> {
     let value = opt_cstring(json)?;
     let parsed: VeloxAboutMetadata = serde_json::from_str(&value).ok()?;
@@ -2570,7 +2661,7 @@ fn about_metadata_from_json(json: *const c_char) -> Option<AboutMetadata> {
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_predefined_menu_item_new(
     item_type: *const c_char,
@@ -2610,7 +2701,7 @@ pub extern "C" fn velox_predefined_menu_item_new(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_predefined_menu_item_free(item: *mut VeloxPredefinedMenuItemHandle) {
     if !item.is_null() {
@@ -2618,7 +2709,7 @@ pub extern "C" fn velox_predefined_menu_item_free(item: *mut VeloxPredefinedMenu
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_predefined_menu_item_identifier(
     item: *mut VeloxPredefinedMenuItemHandle,
@@ -2629,7 +2720,7 @@ pub extern "C" fn velox_predefined_menu_item_identifier(
     item.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_predefined_menu_item_text(
     item: *mut VeloxPredefinedMenuItemHandle,
@@ -2642,7 +2733,7 @@ pub extern "C" fn velox_predefined_menu_item_text(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_predefined_menu_item_set_text(
     item: *mut VeloxPredefinedMenuItemHandle,
@@ -2660,7 +2751,7 @@ pub extern "C" fn velox_predefined_menu_item_set_text(
 
 // MARK: - Separator Menu Item
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_separator_new() -> *mut VeloxSeparatorHandle {
     guard_panic(|| {
@@ -2670,7 +2761,7 @@ pub extern "C" fn velox_separator_new() -> *mut VeloxSeparatorHandle {
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_separator_free(separator: *mut VeloxSeparatorHandle) {
     if !separator.is_null() {
@@ -2678,7 +2769,7 @@ pub extern "C" fn velox_separator_free(separator: *mut VeloxSeparatorHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_separator_identifier(separator: *mut VeloxSeparatorHandle) -> *const c_char {
     let Some(separator) = (unsafe { separator.as_ref() }) else {
@@ -2687,7 +2778,7 @@ pub extern "C" fn velox_separator_identifier(separator: *mut VeloxSeparatorHandl
     separator.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_append_separator(
     submenu: *mut VeloxSubmenuHandle,
@@ -2709,7 +2800,7 @@ pub extern "C" fn velox_submenu_append_separator(
 
 // MARK: - Check Menu Item
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_new(
     id: *const c_char,
@@ -2731,7 +2822,7 @@ pub extern "C" fn velox_check_menu_item_new(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_free(item: *mut VeloxCheckMenuItemHandle) {
     if !item.is_null() {
@@ -2739,7 +2830,7 @@ pub extern "C" fn velox_check_menu_item_free(item: *mut VeloxCheckMenuItemHandle
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_is_checked(item: *mut VeloxCheckMenuItemHandle) -> bool {
     guard_panic_bool(|| {
@@ -2750,7 +2841,7 @@ pub extern "C" fn velox_check_menu_item_is_checked(item: *mut VeloxCheckMenuItem
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_set_checked(
     item: *mut VeloxCheckMenuItemHandle,
@@ -2763,7 +2854,7 @@ pub extern "C" fn velox_check_menu_item_set_checked(
     true
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_is_enabled(item: *mut VeloxCheckMenuItemHandle) -> bool {
     guard_panic_bool(|| {
@@ -2774,7 +2865,7 @@ pub extern "C" fn velox_check_menu_item_is_enabled(item: *mut VeloxCheckMenuItem
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_set_enabled(
     item: *mut VeloxCheckMenuItemHandle,
@@ -2787,7 +2878,7 @@ pub extern "C" fn velox_check_menu_item_set_enabled(
     true
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_text(item: *mut VeloxCheckMenuItemHandle) -> *const c_char {
     guard_panic_value(|| {
@@ -2798,7 +2889,7 @@ pub extern "C" fn velox_check_menu_item_text(item: *mut VeloxCheckMenuItemHandle
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_set_text(
     item: *mut VeloxCheckMenuItemHandle,
@@ -2814,7 +2905,7 @@ pub extern "C" fn velox_check_menu_item_set_text(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_set_accelerator(
     item: *mut VeloxCheckMenuItemHandle,
@@ -2830,7 +2921,7 @@ pub extern "C" fn velox_check_menu_item_set_accelerator(
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_check_menu_item_identifier(item: *mut VeloxCheckMenuItemHandle) -> *const c_char {
     let Some(item) = (unsafe { item.as_ref() }) else {
@@ -2839,7 +2930,7 @@ pub extern "C" fn velox_check_menu_item_identifier(item: *mut VeloxCheckMenuItem
     item.identifier.as_ptr()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_submenu_append_check_item(
     submenu: *mut VeloxSubmenuHandle,
@@ -2859,7 +2950,7 @@ pub extern "C" fn velox_submenu_append_check_item(
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_new(config: *const VeloxTrayConfig) -> *mut VeloxTrayHandle {
     guard_panic(|| {
@@ -2902,13 +2993,13 @@ pub extern "C" fn velox_tray_new(config: *const VeloxTrayConfig) -> *mut VeloxTr
     })
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_new(_config: *const VeloxTrayConfig) -> *mut VeloxTrayHandle {
     ptr::null_mut()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_free(tray: *mut VeloxTrayHandle) {
     if !tray.is_null() {
@@ -2916,11 +3007,11 @@ pub extern "C" fn velox_tray_free(tray: *mut VeloxTrayHandle) {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_free(_tray: *mut VeloxTrayHandle) {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_identifier(tray: *mut VeloxTrayHandle) -> *const c_char {
     let Some(tray) = (unsafe { tray.as_ref() }) else {
@@ -2929,13 +3020,13 @@ pub extern "C" fn velox_tray_identifier(tray: *mut VeloxTrayHandle) -> *const c_
     tray.identifier.as_ptr()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_identifier(_tray: *mut VeloxTrayHandle) -> *const c_char {
     ptr::null()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_title(tray: *mut VeloxTrayHandle, title: *const c_char) -> bool {
     let Some(tray) = (unsafe { tray.as_mut() }) else {
@@ -2946,13 +3037,13 @@ pub extern "C" fn velox_tray_set_title(tray: *mut VeloxTrayHandle, title: *const
     true
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_title(_tray: *mut VeloxTrayHandle, _title: *const c_char) -> bool {
     false
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_tooltip(
     tray: *mut VeloxTrayHandle,
@@ -2965,7 +3056,7 @@ pub extern "C" fn velox_tray_set_tooltip(
     tray.tray.set_tooltip(tooltip.as_deref()).is_ok()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_tooltip(
     _tray: *mut VeloxTrayHandle,
@@ -2974,7 +3065,7 @@ pub extern "C" fn velox_tray_set_tooltip(
     false
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_visible(tray: *mut VeloxTrayHandle, visible: bool) -> bool {
     let Some(tray) = (unsafe { tray.as_mut() }) else {
@@ -2983,13 +3074,13 @@ pub extern "C" fn velox_tray_set_visible(tray: *mut VeloxTrayHandle, visible: bo
     tray.tray.set_visible(visible).is_ok()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_visible(_tray: *mut VeloxTrayHandle, _visible: bool) -> bool {
     false
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_show_menu_on_left_click(
     tray: *mut VeloxTrayHandle,
@@ -3002,7 +3093,7 @@ pub extern "C" fn velox_tray_set_show_menu_on_left_click(
     true
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_show_menu_on_left_click(
     _tray: *mut VeloxTrayHandle,
@@ -3011,7 +3102,7 @@ pub extern "C" fn velox_tray_set_show_menu_on_left_click(
     false
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_menu(
     tray: *mut VeloxTrayHandle,
@@ -3040,7 +3131,7 @@ pub extern "C" fn velox_tray_set_menu(
     true
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 #[no_mangle]
 pub extern "C" fn velox_tray_set_menu(
     _tray: *mut VeloxTrayHandle,
@@ -3229,7 +3320,10 @@ pub extern "C" fn velox_window_set_shadow(window: *mut VeloxWindowHandle, shadow
             return true;
         }
         #[allow(unreachable_code)]
-        false
+        {
+            let _ = shadow;
+            false
+        }
     })
     .unwrap_or(false)
 }
@@ -4257,12 +4351,12 @@ fn serialize_event(event: &Event<VeloxUserEvent>) -> String {
             "type": "user-event",
             "payload": payload,
         }),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         Event::UserEvent(VeloxUserEvent::Menu(menu_id)) => json!({
             "type": "menu-event",
             "menu_id": menu_id,
         }),
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         Event::UserEvent(VeloxUserEvent::Tray(event)) => {
             let mut payload = Map::new();
             payload.insert("type".into(), json!("tray-event"));
