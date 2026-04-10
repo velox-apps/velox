@@ -730,13 +730,17 @@ public struct BundleConfig: Codable, Sendable {
   /// macOS-specific bundle settings
   public var macos: MacOSBundleConfig?
 
+  /// Linux-specific bundle settings
+  public var linux: LinuxBundleConfig?
+
   public init(
     active: Bool? = nil,
     targets: [BundleTarget]? = nil,
     publisher: String? = nil,
     icon: BundleIcon? = nil,
     resources: [String]? = nil,
-    macos: MacOSBundleConfig? = nil
+    macos: MacOSBundleConfig? = nil,
+    linux: LinuxBundleConfig? = nil
   ) {
     self.active = active
     self.targets = targets
@@ -744,12 +748,15 @@ public struct BundleConfig: Codable, Sendable {
     self.icon = icon
     self.resources = resources
     self.macos = macos
+    self.linux = linux
   }
 }
 
 public enum BundleTarget: String, Codable, Sendable {
   case app
   case dmg
+  case deb
+  case appimage
 }
 
 public struct BundleIcon: Codable, Sendable {
@@ -816,6 +823,52 @@ public struct MacOSBundleConfig: Codable, Sendable {
     self.hardenedRuntime = hardenedRuntime
     self.notarization = notarization
     self.dmg = dmg
+  }
+}
+
+public struct LinuxBundleConfig: Codable, Sendable {
+  /// Short description for the package
+  public var shortDescription: String?
+
+  /// Long description for the package
+  public var longDescription: String?
+
+  /// Debian section (e.g., "utils", "devel", "net")
+  public var section: String?
+
+  /// Package priority (e.g., "optional")
+  public var priority: String?
+
+  /// Package dependencies (e.g., ["libwebkit2gtk-4.1-0", "libgtk-3-0"])
+  public var depends: [String]?
+
+  /// FreeDesktop categories (e.g., ["Utility", "Development"])
+  public var categories: [String]?
+
+  /// Desktop file template path (overrides auto-generated .desktop file)
+  public var desktopTemplate: String?
+
+  /// MIME types the application can open
+  public var mimeTypes: [String]?
+
+  public init(
+    shortDescription: String? = nil,
+    longDescription: String? = nil,
+    section: String? = nil,
+    priority: String? = nil,
+    depends: [String]? = nil,
+    categories: [String]? = nil,
+    desktopTemplate: String? = nil,
+    mimeTypes: [String]? = nil
+  ) {
+    self.shortDescription = shortDescription
+    self.longDescription = longDescription
+    self.section = section
+    self.priority = priority
+    self.depends = depends
+    self.categories = categories
+    self.desktopTemplate = desktopTemplate
+    self.mimeTypes = mimeTypes
   }
 }
 
