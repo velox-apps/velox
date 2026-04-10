@@ -16,14 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-2022]
+        os: [macos-14, windows-2022, ubuntu-24.04]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift (macOS)
-        if: runner.os == 'macOS'
+      - name: Setup Swift (Unix)
+        if: runner.os != 'Windows'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.2"
@@ -96,6 +96,7 @@ jobs:
           }
 
       - name: Setup Rust
+        if: runner.os != 'Linux'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Show tool versions (Windows)
@@ -110,8 +111,8 @@ jobs:
           cargo --version
           rustc --version
 
-      - name: Show tool versions (Unix)
-        if: runner.os != 'Windows'
+      - name: Show tool versions (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -120,13 +121,21 @@ jobs:
           cargo --version
           rustc --version
 
+      - name: Show tool versions (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v swift
+          swift --version
+
       - name: Build Rust FFI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: cargo build --manifest-path runtime-wry-ffi/Cargo.toml
 
-      - name: Build Rust FFI (Unix)
-        if: runner.os != 'Windows'
+      - name: Build Rust FFI (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -139,11 +148,18 @@ jobs:
           VELOX_CARGO_ONLINE: "1"
         run: swift build --disable-sandbox
 
-      - name: Build Swift package (Unix)
-        if: runner.os != 'Windows'
+      - name: Build Swift package (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         env:
           VELOX_CARGO_ONLINE: "1"
         run: |
           set -euo pipefail
           swift build --disable-sandbox
+
+      - name: Build Velox CLI (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift build --product velox
