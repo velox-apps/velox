@@ -24,9 +24,9 @@ jobs:
 
       - name: Setup Swift (macOS)
         if: runner.os == 'macOS'
-        uses: swift-actions/setup-swift@v3
+        uses: swift-actions/setup-swift@v2
         with:
-          swift-version: "6.3"
+          swift-version: "6.2"
 
       - name: Setup Swift (Windows)
         if: runner.os == 'Windows'
