@@ -9,7 +9,7 @@ Build beautiful desktop applications using Swift and HTML.
 
 ## Overview
 
-Velox brings the power of [Tauri](https://tauri.app) to Swift developers. Create native macOS and iOS applications with HTML/CSS/JavaScript frontends and Swift backends—combining the flexibility of web technologies with the performance and safety of Swift.
+Velox brings the power of [Tauri](https://tauri.app) to Swift developers. Create native macOS, Linux, and iOS applications with HTML/CSS/JavaScript frontends and Swift backends—combining the flexibility of web technologies with the performance and safety of Swift.
 
 ```swift
 import VeloxRuntimeWry
